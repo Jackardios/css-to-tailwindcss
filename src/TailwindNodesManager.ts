@@ -1,13 +1,5 @@
-import type {
-  AttributeSelector,
-  PseudoElement,
-  PseudoSelector,
-  TagSelector,
-} from 'css-what';
 import type { Declaration } from 'postcss';
-
-import { parse, stringify } from 'css-what';
-import { isAriaSelector } from './utils/isAriaSelector';
+import type { SetPartialProps } from './types/utils/SetPartialProps';
 
 export interface TailwindNode {
   selector: string;
@@ -15,8 +7,9 @@ export interface TailwindNode {
   skippedDeclarations: Declaration[];
 }
 
-export type MergeableNode = Pick<TailwindNode, 'selector'> &
-  Partial<Omit<TailwindNode, 'selector'>>;
+export type MergeableNode =
+  | SetPartialProps<TailwindNode, 'tailwindClasses'>
+  | SetPartialProps<TailwindNode, 'skippedDeclarations'>;
 
 export class TailwindNodesManager {
   protected nodes: TailwindNode[];
@@ -40,8 +33,6 @@ export class TailwindNodesManager {
   }
 
   mergeNode(mergeableNode: MergeableNode) {
-    mergeableNode = this.normalizeNode(mergeableNode);
-
     let node = this.getNodeBySelector(mergeableNode.selector);
 
     if (node) {
@@ -71,57 +62,20 @@ export class TailwindNodesManager {
     return node;
   }
 
-  protected addNode(node: TailwindNode) {
-    this.nodesMap[node.selector] = this.nodes.push(node) - 1;
+  mergeNodes(nodes: MergeableNode[]) {
+    nodes.forEach(node => this.mergeNode(node));
 
     return this;
   }
 
-  protected normalizeNode<T extends MergeableNode | TailwindNode>(node: T): T {
-    const parsedSelector = this.parseSelector(node.selector);
-
-    node.selector = parsedSelector.selector;
-    node.tailwindClasses = node.tailwindClasses?.map(className => {
-      return `${parsedSelector.classesPrefix}${className}`;
-    });
-
-    return node;
+  mergeNodesManager(nodesManager: TailwindNodesManager) {
+    return this.mergeNodes(nodesManager.getNodes());
   }
 
-  protected parseSelector(selector: string) {
-    const parsedSelector = parse(selector)[0];
-    const base: Array<TagSelector | AttributeSelector> = [];
-    const convertable: Array<
-      AttributeSelector | PseudoSelector | PseudoElement
-    > = [];
+  protected addNode(node: TailwindNode) {
+    this.nodesMap[node.selector] = this.nodes.push(node) - 1;
 
-    parsedSelector?.forEach(item => {
-      if (
-        ['pseudo', 'pseudo-element'].includes(item.type) ||
-        isAriaSelector(item)
-      ) {
-        convertable.push(
-          item as AttributeSelector | PseudoSelector | PseudoElement
-        );
-      } else if (['tag', 'attribute'].includes(item.type)) {
-        base.push(item as TagSelector | AttributeSelector);
-      }
-    });
-
-    const isComplexSelector =
-      base.length + convertable.length !== parsedSelector.length;
-
-    if (isComplexSelector) {
-      return {
-        selector,
-        classesPrefix: '',
-      };
-    }
-
-    return {
-      selector: stringify([base]),
-      classesPrefix: convertable.map(item => `${item.name}:`).join(''),
-    };
+    return this;
   }
 
   protected refreshNodesMap() {

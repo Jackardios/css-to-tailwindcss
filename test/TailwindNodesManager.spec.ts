@@ -68,7 +68,7 @@ describe('TailwindNodesManager', () => {
   });
 
   describe('TailwindNodesManager.mergeNode', () => {
-    test('merge node with complex selector', () => {
+    test('merge node', () => {
       const nodes = createBaseTailwindNodesManager();
 
       // new selector
@@ -87,7 +87,7 @@ describe('TailwindNodesManager', () => {
       expect(
         nodes.mergeNode({
           selector: '.alert > .foobar-baz:hover:focus',
-          tailwindClasses: ['block', 'pt-12', 'bg-cover'],
+          tailwindClasses: ['block', 'pt-12', 'text-left', 'bg-cover'],
         })
       ).toEqual({
         selector: '.alert > .foobar-baz:hover:focus',
@@ -102,49 +102,100 @@ describe('TailwindNodesManager', () => {
         skippedDeclarations: [],
       });
     });
+  });
 
-    test('merge node with aria-disabled attribute, pseudo-class and pseudo-element selector', () => {
+  describe('TailwindNodesManager.mergeNodes', () => {
+    test('merge nodes', () => {
       const nodes = createBaseTailwindNodesManager();
 
-      expect(
-        nodes.mergeNode({
-          selector: '.alert[aria-disabled="true"]:hover:focus::after',
+      nodes.mergeNodes([
+        {
+          selector: '.alert > .bar:hover:focus',
           tailwindClasses: ['pt-12', 'mb-20', 'bg-blue-500'],
-        })
-      ).toEqual({
-        selector: '.alert',
-        tailwindClasses: [
-          'mt-20',
-          'mb-20',
-          'ml-20',
-          'mr-20',
-          'aria-disabled:hover:focus:after:pt-12',
-          'aria-disabled:hover:focus:after:mb-20',
-          'aria-disabled:hover:focus:after:bg-blue-500',
-        ],
-        skippedDeclarations: [],
-      });
+        },
+        {
+          selector: '.alert > .foobar-baz:hover:focus',
+          tailwindClasses: ['block', 'pt-12', 'text-left', 'bg-cover'],
+        },
+      ]);
+      expect(nodes.getNodes()).toEqual([
+        {
+          selector: '.alert',
+          tailwindClasses: ['mt-20', 'mb-20', 'ml-20', 'mr-20'],
+          skippedDeclarations: [],
+        },
+        {
+          selector: '.alert[data-test="hello"]',
+          tailwindClasses: ['pt-4', 'font-bold', 'text-center'],
+          skippedDeclarations: [],
+        },
+        {
+          selector: '.alert > .foobar-baz:hover:focus',
+          tailwindClasses: [
+            'text-left',
+            'text-blue-500',
+            'align-middle',
+            'block',
+            'pt-12',
+            'bg-cover',
+          ],
+          skippedDeclarations: [],
+        },
+        {
+          selector: '.alert > .bar:hover:focus',
+          tailwindClasses: ['pt-12', 'mb-20', 'bg-blue-500'],
+          skippedDeclarations: [],
+        },
+      ]);
+    });
+  });
 
-      expect(
-        nodes.mergeNode({
-          selector: '.alert[aria-disabled="true"]:hover:focus::after',
-          tailwindClasses: ['block', 'pt-12', 'mb-20', 'bg-cover'],
-        })
-      ).toEqual({
-        selector: '.alert',
-        tailwindClasses: [
-          'mt-20',
-          'mb-20',
-          'ml-20',
-          'mr-20',
-          'aria-disabled:hover:focus:after:pt-12',
-          'aria-disabled:hover:focus:after:mb-20',
-          'aria-disabled:hover:focus:after:bg-blue-500',
-          'aria-disabled:hover:focus:after:block',
-          'aria-disabled:hover:focus:after:bg-cover',
-        ],
-        skippedDeclarations: [],
-      });
+  describe('TailwindNodesManager.mergeNodesManager', () => {
+    test('merge nodes', () => {
+      const nodes = createBaseTailwindNodesManager();
+      const mergeableNodesManager = new TailwindNodesManager([
+        {
+          selector: '.alert > .bar:hover:focus',
+          tailwindClasses: ['pt-12', 'mb-20', 'bg-blue-500'],
+          skippedDeclarations: [],
+        },
+        {
+          selector: '.alert > .foobar-baz:hover:focus',
+          tailwindClasses: ['block', 'pt-12', 'text-left', 'bg-cover'],
+          skippedDeclarations: [],
+        },
+      ]);
+
+      nodes.mergeNodesManager(mergeableNodesManager);
+      expect(nodes.getNodes()).toEqual([
+        {
+          selector: '.alert',
+          tailwindClasses: ['mt-20', 'mb-20', 'ml-20', 'mr-20'],
+          skippedDeclarations: [],
+        },
+        {
+          selector: '.alert[data-test="hello"]',
+          tailwindClasses: ['pt-4', 'font-bold', 'text-center'],
+          skippedDeclarations: [],
+        },
+        {
+          selector: '.alert > .foobar-baz:hover:focus',
+          tailwindClasses: [
+            'text-left',
+            'text-blue-500',
+            'align-middle',
+            'block',
+            'pt-12',
+            'bg-cover',
+          ],
+          skippedDeclarations: [],
+        },
+        {
+          selector: '.alert > .bar:hover:focus',
+          tailwindClasses: ['pt-12', 'mb-20', 'bg-blue-500'],
+          skippedDeclarations: [],
+        },
+      ]);
     });
   });
 });
