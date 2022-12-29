@@ -7,7 +7,7 @@ import type {
 import type { Declaration } from 'postcss';
 
 import { parse, stringify } from 'css-what';
-import { isAriaSelector } from './utils/isAriaAttribute';
+import { isAriaSelector } from './utils/isAriaSelector';
 
 export interface TailwindNode {
   selector: string;
