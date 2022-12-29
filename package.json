@@ -50,6 +50,7 @@
     "@ryansonshine/cz-conventional-changelog": "^3.3.4",
     "@types/jest": "^27.5.2",
     "@types/node": "^12.20.11",
+    "@types/postcss-safe-parser": "^5.0.1",
     "@typescript-eslint/eslint-plugin": "^4.22.0",
     "@typescript-eslint/parser": "^4.22.0",
     "conventional-changelog-conventionalcommits": "^5.0.0",
@@ -118,5 +119,12 @@
       "@semantic-release/npm",
       "@semantic-release/github"
     ]
+  },
+  "dependencies": {
+    "change-case": "^4.1.2",
+    "css-what": "^6.1.0",
+    "postcss": "^8.4.20",
+    "postcss-safe-parser": "^6.0.0",
+    "tailwindcss": "^3.2.4"
   }
 }
