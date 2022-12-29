@@ -18,7 +18,7 @@ export interface TailwindNode {
 export type MergeableNode = Pick<TailwindNode, 'selector'> &
   Partial<Omit<TailwindNode, 'selector'>>;
 
-export class TailwindNodes {
+export class TailwindNodesManager {
   protected nodes: TailwindNode[];
   protected nodesMap: Record<TailwindNode['selector'], number> = {};
 

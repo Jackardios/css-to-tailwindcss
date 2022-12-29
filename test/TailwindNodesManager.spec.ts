@@ -1,7 +1,7 @@
-import { TailwindNodes } from '../src/tailwind-nodes';
+import { TailwindNodesManager } from '../src/TailwindNodesManager';
 
-function createBaseTailwindNodes() {
-  return new TailwindNodes([
+function createBaseTailwindNodesManager() {
+  return new TailwindNodesManager([
     {
       selector: '.alert',
       tailwindClasses: ['mt-20', 'mb-20', 'ml-20', 'mr-20'],
@@ -20,10 +20,10 @@ function createBaseTailwindNodes() {
   ]);
 }
 
-describe('TailwindNodes', () => {
-  describe('TailwindNodes.getNodeIndexBySelector', () => {
+describe('TailwindNodesManager', () => {
+  describe('TailwindNodesManager.getNodeIndexBySelector', () => {
     test('get node index by selector', () => {
-      const nodes = createBaseTailwindNodes();
+      const nodes = createBaseTailwindNodesManager();
 
       expect(nodes.getNodeIndexBySelector('.alert[data-test="hello"]')).toEqual(
         1
@@ -31,9 +31,9 @@ describe('TailwindNodes', () => {
     });
   });
 
-  describe('TailwindNodes.getNodeBySelector', () => {
+  describe('TailwindNodesManager.getNodeBySelector', () => {
     test('get node by selector', () => {
-      const nodes = createBaseTailwindNodes();
+      const nodes = createBaseTailwindNodesManager();
 
       expect(nodes.getNodeBySelector('.alert[data-test="hello"]')).toEqual({
         selector: '.alert[data-test="hello"]',
@@ -43,9 +43,9 @@ describe('TailwindNodes', () => {
     });
   });
 
-  describe('TailwindNodes.getNodes', () => {
+  describe('TailwindNodesManager.getNodes', () => {
     test('get all nodes', () => {
-      const nodes = createBaseTailwindNodes();
+      const nodes = createBaseTailwindNodesManager();
 
       expect(nodes.getNodes()).toEqual([
         {
@@ -67,9 +67,9 @@ describe('TailwindNodes', () => {
     });
   });
 
-  describe('TailwindNodes.mergeNode', () => {
+  describe('TailwindNodesManager.mergeNode', () => {
     test('merge node with complex selector', () => {
-      const nodes = createBaseTailwindNodes();
+      const nodes = createBaseTailwindNodesManager();
 
       // new selector
       expect(
@@ -104,7 +104,7 @@ describe('TailwindNodes', () => {
     });
 
     test('merge node with aria-disabled attribute, pseudo-class and pseudo-element selector', () => {
-      const nodes = createBaseTailwindNodes();
+      const nodes = createBaseTailwindNodesManager();
 
       expect(
         nodes.mergeNode({
