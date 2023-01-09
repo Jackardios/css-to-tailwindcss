@@ -1,5 +1,5 @@
 {
-  "name": "css2tailwind",
+  "name": "css-to-tailwindcss",
   "version": "0.0.0-development",
   "description": "CSS to TailwindCSS converter",
   "main": "./lib/index.js",
@@ -19,7 +19,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jackardios/css2tailwind.git"
+    "url": "git+https://github.com/jackardios/css-to-tailwindcss.git"
   },
   "license": "MIT",
   "author": {
@@ -42,9 +42,9 @@
     "codecov"
   ],
   "bugs": {
-    "url": "https://github.com/jackardios/css2tailwind/issues"
+    "url": "https://github.com/jackardios/css-to-tailwindcss/issues"
   },
-  "homepage": "https://github.com/jackardios/css2tailwind#readme",
+  "homepage": "https://github.com/jackardios/css-to-tailwindcss#readme",
   "devDependencies": {
     "@ryansonshine/commitizen": "^4.2.8",
     "@ryansonshine/cz-conventional-changelog": "^3.3.4",
@@ -61,6 +61,7 @@
     "husky": "^6.0.0",
     "jest": "^27.2.0",
     "lint-staged": "^10.5.4",
+    "postcss-nested": "^6.0.0",
     "prettier": "^2.2.1",
     "semantic-release": "^19.0.2",
     "ts-jest": "^27.0.5",
@@ -122,6 +123,7 @@
   },
   "dependencies": {
     "change-case": "^4.1.2",
+    "colord": "^2.9.3",
     "css-what": "^6.1.0",
     "postcss": "^8.4.20",
     "postcss-safe-parser": "^6.0.0",

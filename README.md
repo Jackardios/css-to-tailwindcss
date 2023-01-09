@@ -1,1 +1,1 @@
-# CSS2Tailwind
+# Convert CSS to TailwindCSS
