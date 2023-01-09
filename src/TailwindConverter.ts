@@ -1,36 +1,68 @@
-import type {
-  AttributeSelector,
-  PseudoElement,
-  PseudoSelector,
-  TagSelector,
-} from 'css-what';
-import { AtRule, Declaration, Rule } from 'postcss';
+import type { Selector } from 'css-what';
+import type { AcceptedPlugin, AtRule, Declaration, Rule } from 'postcss';
 import type { Config } from 'tailwindcss';
+import type { ConverterMapping } from './types/ConverterMapping';
 
-import postCSSParser from 'postcss-safe-parser';
+import postcss from 'postcss';
+import postcssSafeParser from 'postcss-safe-parser';
 import resolveConfig from 'tailwindcss/resolveConfig';
-import { snakeCase } from 'change-case';
 import { parse, stringify } from 'css-what';
 
-import { MergeableNode, TailwindNodesManager } from './TailwindNodesManager';
+import { TailwindNode, TailwindNodesManager } from './TailwindNodesManager';
 import { isAtRuleNode } from './utils/isAtRuleNode';
-import { isAriaSelector } from './utils/isAriaSelector';
-import { prepareRuleSelectors } from './utils/prepareRuleSelectors';
+import { converterMappingByTailwindTheme } from './utils/converterMappingByTailwindTheme';
+import { TAILWIND_DECLARATION_CONVERTERS } from './constants/converters';
+
+export interface TailwindConverterConfig {
+  remInPx?: number | null;
+  tailwindConfig: Config;
+  postCSSPlugins: AcceptedPlugin[];
+}
+
+export interface ResolvedTailwindConverterConfig
+  extends TailwindConverterConfig {
+  mapping: ConverterMapping;
+}
+
+export const DEFAULT_CONVERTER_CONFIG: Omit<
+  TailwindConverterConfig,
+  'tailwindConfig'
+> = {
+  postCSSPlugins: [],
+};
 
 export class TailwindConverter {
-  protected resolvedTailwindConfig: Config;
+  protected config: ResolvedTailwindConverterConfig;
 
-  constructor(tailwindConfig: Config = { content: [] }) {
-    this.resolvedTailwindConfig = resolveConfig(tailwindConfig);
+  constructor({
+    tailwindConfig,
+    ...converterConfig
+  }: Partial<TailwindConverterConfig> = {}) {
+    const resolvedTailwindConfig = resolveConfig(
+      tailwindConfig || ({} as Config)
+    );
+
+    this.config = {
+      ...DEFAULT_CONVERTER_CONFIG,
+      ...converterConfig,
+      tailwindConfig: resolvedTailwindConfig,
+      mapping: converterMappingByTailwindTheme(
+        resolvedTailwindConfig.theme,
+        converterConfig.remInPx
+      ),
+    };
   }
 
   convertCSS(css: string) {
     const nodesManager = new TailwindNodesManager();
-    const ast = postCSSParser(css);
 
-    ast.walkRules(rule => {
-      nodesManager.mergeNodes(this.convertRule(rule));
-    });
+    postcss(this.config.postCSSPlugins)
+      .process(css, { parser: postcssSafeParser })
+      .then(result => {
+        result.root.walkRules(rule => {
+          nodesManager.mergeNodes(this.convertRule(rule));
+        });
+      });
 
     return nodesManager.getNodes();
   }
@@ -38,13 +70,17 @@ export class TailwindConverter {
   convertRule(rule: Rule) {
     const nodesManager = new TailwindNodesManager();
 
-    prepareRuleSelectors(rule).forEach(selector => {
+    rule.selectors.forEach(selector => {
       let tailwindClasses: string[] = [];
+      let skippedDeclarations: Declaration[] = [];
 
       rule.walkDecls(declaration => {
-        tailwindClasses = tailwindClasses.concat(
-          this.convertDeclarationToClasses(declaration)
-        );
+        const converted = this.convertDeclarationToClasses(declaration);
+        if (converted?.length) {
+          tailwindClasses = tailwindClasses.concat();
+        } else {
+          skippedDeclarations.push(declaration);
+        }
       });
 
       if (tailwindClasses.length) {
@@ -52,7 +88,8 @@ export class TailwindConverter {
           this.makeTailwindNode(
             tailwindClasses,
             rule,
-            selector || rule.selector
+            selector || rule.selector,
+            skippedDeclarations
           )
         );
       }
@@ -62,40 +99,41 @@ export class TailwindConverter {
   }
 
   convertDeclarationToClasses(declaration: Declaration) {
-    return [`${declaration.prop}-[${snakeCase(declaration.value)}]`]; // as fallback
+    return (
+      TAILWIND_DECLARATION_CONVERTERS[declaration.prop]?.(
+        declaration,
+        this.config
+      ) || []
+    );
   }
 
   protected makeTailwindNode(
     tailwindClasses: string[],
     rule: Rule,
-    selector: string
-  ): MergeableNode {
+    selector: string,
+    skippedDeclarations: Declaration[] = []
+  ): TailwindNode {
     const parsedSelector = parse(selector)[0];
-    const base: Array<TagSelector | AttributeSelector> = [];
-    const convertable: Array<
-      AttributeSelector | PseudoSelector | PseudoElement
-    > = [];
+    const baseSelectors: Array<Selector> = [];
+    const converted: Array<string> = [];
 
     parsedSelector?.forEach(item => {
-      if (
-        ['pseudo', 'pseudo-element'].includes(item.type) ||
-        isAriaSelector(item)
-      ) {
-        convertable.push(
-          item as AttributeSelector | PseudoSelector | PseudoElement
-        );
-      } else if (['tag', 'attribute'].includes(item.type)) {
-        base.push(item as TagSelector | AttributeSelector);
+      const convertedSelector = this.convertSelector(item);
+
+      if (convertedSelector) {
+        converted.push(convertedSelector);
+      } else if (item.type === 'tag' || item.type === 'attribute') {
+        baseSelectors.push(item);
       }
     });
 
     const isComplexSelector =
-      base.length + convertable.length !== parsedSelector.length;
+      baseSelectors.length + converted.length !== parsedSelector.length;
 
     if (!isComplexSelector) {
-      const classesPrefix = convertable.map(item => `${item.name}:`).join('');
+      const classesPrefix = converted.join('');
 
-      selector = stringify([base]);
+      selector = stringify([baseSelectors]);
       tailwindClasses = tailwindClasses.map(
         className => `${classesPrefix}${className}`
       );
@@ -111,7 +149,40 @@ export class TailwindConverter {
     return {
       selector,
       tailwindClasses,
+      skippedDeclarations,
     };
+  }
+
+  protected convertSelector(selector: Selector) {
+    if (selector.type === 'pseudo' || selector.type === 'pseudo-element') {
+      return `${selector.name}:`;
+    }
+
+    if (selector.type === 'attribute') {
+      if (selector.name.startsWith('aria-')) {
+        const mapped =
+          this.config.mapping.aria[stringify([[selector]]).substring(5)];
+
+        if (!mapped) {
+          return null;
+        }
+
+        return `${mapped}:`;
+      }
+
+      if (selector.name.startsWith('data-')) {
+        const mapped =
+          this.config.mapping.data[stringify([[selector]]).substring(5)];
+
+        if (!mapped) {
+          return null;
+        }
+
+        return `${mapped}:`;
+      }
+    }
+
+    return null;
   }
 
   protected prepareClassesByAtRule(
@@ -129,6 +200,7 @@ export class TailwindConverter {
   }
 
   protected convertAtRuleToClassPrefix(atRule: AtRule) {
+    // TODO: add implementation
     if (atRule.name === 'media') {
       return 'media:';
     }
