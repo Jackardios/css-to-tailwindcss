@@ -11,6 +11,7 @@ import { buildMediaQueryByScreen } from './buildMediaQueryByScreen';
 import { flattenObject } from './flattenObject';
 import { invertObject } from './invertObject';
 import { remValueToPx } from './remValueToPx';
+import { normalizeNumberValue } from './normalizeNumberValue';
 
 function isColorKey(key: string) {
   return (
@@ -76,20 +77,12 @@ function convertFontSizes(
 
   Object.keys(fontSizes).forEach(key => {
     let value = fontSizes[key];
-    const valueType = typeof value;
 
-    if (Array.isArray(valueType)) {
+    if (Array.isArray(value)) {
       value = value[0];
     }
 
-    if (valueType === 'number') {
-      value = value.toString() + 'px';
-    }
-
-    flatObject[key] =
-      remInPx != null
-        ? remValueToPx(value as string, remInPx)
-        : (value as string);
+    flatObject[key] = remInPx != null ? remValueToPx(value, remInPx) : value;
   });
 
   return invertObject(flatObject);
@@ -126,14 +119,17 @@ function convertColors(colors: RecursiveKeyValuePair) {
   return result;
 }
 
-function convertSizes(sizes: KeyValuePair, remInPx: number) {
+function convertSizes(sizes: KeyValuePair, remInPx: number | null | undefined) {
   const result: Record<string, string> = {};
 
   Object.keys(sizes).forEach(sizeName => {
     const size = sizes[sizeName]?.toString();
 
     if (size) {
-      result[remValueToPx(size, remInPx)] = sizeName;
+      const convertedSize = normalizeNumberValue(
+        remInPx ? remValueToPx(size, remInPx) : size
+      );
+      result[convertedSize] = sizeName;
     }
   });
 
@@ -163,7 +159,7 @@ export function converterMappingByTailwindTheme(
       converterMapping[key] = convertScreens(themeItem);
     } else if (isColorKey(key)) {
       (converterMapping as any)[key] = convertColors(themeItem);
-    } else if (remInPx && isSizeKey(key)) {
+    } else if (isSizeKey(key)) {
       (converterMapping as any)[key] = convertSizes(themeItem, remInPx);
     } else {
       (converterMapping as any)[key] = invertObject(themeItem);

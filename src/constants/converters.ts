@@ -2,6 +2,7 @@ import { colord } from 'colord';
 import type { Declaration } from 'postcss';
 import type { ResolvedTailwindConverterConfig } from '../TailwindConverter';
 import { isCSSVariable } from '../utils/isCSSVariable';
+import { normalizeNumberValue } from '../utils/normalizeNumberValue';
 import { remValueToPx } from '../utils/remValueToPx';
 import { UTILITIES_MAPPING } from './utilities-mapping';
 
@@ -81,7 +82,9 @@ function convertSizeDeclarationValue(
   classPrefix: string,
   remInPx: number | null | undefined
 ) {
-  const value = remInPx ? remValueToPx(declValue, remInPx) : declValue;
+  const value = normalizeNumberValue(
+    remInPx ? remValueToPx(declValue, remInPx) : declValue
+  );
 
   return convertDeclarationValue(value, valuesMap, classPrefix, declValue);
 }
