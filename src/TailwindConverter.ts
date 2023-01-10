@@ -77,7 +77,7 @@ export class TailwindConverter {
       rule.walkDecls(declaration => {
         const converted = this.convertDeclarationToClasses(declaration);
         if (converted?.length) {
-          tailwindClasses = tailwindClasses.concat();
+          tailwindClasses = tailwindClasses.concat(converted);
         } else {
           skippedDeclarations.push(declaration);
         }
@@ -139,6 +139,7 @@ export class TailwindConverter {
       );
     }
 
+    // TODO: walk all atRules instead of this:
     if (isAtRuleNode(rule.parent)) {
       tailwindClasses = this.prepareClassesByAtRule(
         tailwindClasses,
