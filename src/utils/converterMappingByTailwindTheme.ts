@@ -9,9 +9,50 @@ import type { ConverterMapping } from '../types/ConverterMapping';
 import { colord } from 'colord';
 import { buildMediaQueryByScreen } from './buildMediaQueryByScreen';
 import { flattenObject } from './flattenObject';
-import { invertObject } from './invertObject';
 import { remValueToPx } from './remValueToPx';
-import { normalizeNumberValue } from './normalizeNumberValue';
+import { normalizeNumbersInString } from './normalizeNumbersInString';
+import { removeUnnecessarySpaces } from './removeUnnecessarySpaces';
+
+export function normalizeValue(value: string) {
+  return removeUnnecessarySpaces(normalizeNumbersInString(value));
+}
+
+export function normalizeColorValue(colorValue: string) {
+  const parsed = colord(colorValue);
+
+  return parsed.isValid() ? parsed.toHex() : colorValue;
+}
+
+export function normalizeSizeValue(
+  sizeValue: string,
+  remInPx: number | undefined | null
+) {
+  return normalizeNumbersInString(
+    remInPx != null ? remValueToPx(sizeValue, remInPx) : sizeValue
+  );
+}
+
+export function normalizeScreenValue(screenValue: string) {
+  return screenValue.replace(/\(|\)/g, '');
+}
+
+function mapThemeTokens<V>(
+  tokens: KeyValuePair<string, V>,
+  valueConverterFn: (tokenValue: V, tokenKey: string) => string | null
+) {
+  const result: Record<string, string> = {};
+
+  Object.keys(tokens).forEach(tokenKey => {
+    const tokenValue = tokens[tokenKey] as V;
+    const convertedTokenValue = valueConverterFn(tokenValue, tokenKey);
+
+    if (convertedTokenValue) {
+      result[convertedTokenValue] = tokenKey;
+    }
+  });
+
+  return result;
+}
 
 function isColorKey(key: string) {
   return (
@@ -73,67 +114,57 @@ function convertFontSizes(
   >,
   remInPx?: number | null
 ) {
-  const flatObject: Record<string, string> = {};
-
-  Object.keys(fontSizes).forEach(key => {
-    let value = fontSizes[key];
-
-    if (Array.isArray(value)) {
-      value = value[0];
+  return mapThemeTokens(fontSizes, fontSizeValue => {
+    if (!fontSizeValue) {
+      return null;
     }
 
-    flatObject[key] = remInPx != null ? remValueToPx(value, remInPx) : value;
-  });
+    if (Array.isArray(fontSizeValue)) {
+      fontSizeValue = fontSizeValue[0];
+    }
 
-  return invertObject(flatObject);
+    return normalizeSizeValue(fontSizeValue, remInPx);
+  });
 }
 
 function convertScreens(screens: ScreensConfig) {
-  const converted: Record<string, string> = {};
-
   if (Array.isArray(screens)) {
-    return converted;
+    return {} as Record<string, string>;
   }
 
-  Object.keys(screens).forEach(key => {
-    converted[buildMediaQueryByScreen(screens[key])] = key;
+  return mapThemeTokens(screens, screenValue => {
+    return screenValue
+      ? normalizeScreenValue(buildMediaQueryByScreen(screenValue))
+      : null;
   });
-
-  return converted;
 }
 
 function convertColors(colors: RecursiveKeyValuePair) {
   const flatColors = flattenObject(colors);
 
-  const result: Record<string, string> = {};
+  return mapThemeTokens(flatColors, (colorValue: string) => {
+    colorValue = colorValue?.toString();
 
-  Object.keys(flatColors).forEach(colorName => {
-    const color = flatColors[colorName]?.toString();
-
-    if (color) {
-      const parsed = colord(color);
-      result[parsed.isValid() ? parsed.toHex() : color] = colorName;
-    }
+    return colorValue ? normalizeColorValue(colorValue) : null;
   });
-
-  return result;
 }
 
 function convertSizes(sizes: KeyValuePair, remInPx: number | null | undefined) {
-  const result: Record<string, string> = {};
+  return mapThemeTokens(sizes, (sizeValue: string) => {
+    sizeValue = sizeValue?.toString();
 
-  Object.keys(sizes).forEach(sizeName => {
-    const size = sizes[sizeName]?.toString();
-
-    if (size) {
-      const convertedSize = normalizeNumberValue(
-        remInPx ? remValueToPx(size, remInPx) : size
-      );
-      result[convertedSize] = sizeName;
-    }
+    return sizeValue ? normalizeSizeValue(sizeValue, remInPx) : null;
   });
+}
 
-  return result;
+function convertOtherThemeTokens(tokens: KeyValuePair | null | undefined) {
+  return tokens
+    ? mapThemeTokens(tokens, (tokenValue: string) => {
+        tokenValue = tokenValue?.toString();
+
+        return tokenValue ? normalizeValue(tokenValue) : null;
+      })
+    : tokens;
 }
 
 export function converterMappingByTailwindTheme(
@@ -162,7 +193,7 @@ export function converterMappingByTailwindTheme(
     } else if (isSizeKey(key)) {
       (converterMapping as any)[key] = convertSizes(themeItem, remInPx);
     } else {
-      (converterMapping as any)[key] = invertObject(themeItem);
+      (converterMapping as any)[key] = convertOtherThemeTokens(themeItem);
     }
   });
 

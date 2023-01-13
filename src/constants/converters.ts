@@ -1,34 +1,41 @@
-import { colord } from 'colord';
 import type { Declaration } from 'postcss';
 import type { ResolvedTailwindConverterConfig } from '../TailwindConverter';
+
 import { isCSSVariable } from '../utils/isCSSVariable';
-import { normalizeNumberValue } from '../utils/normalizeNumberValue';
-import { remValueToPx } from '../utils/remValueToPx';
 import { UTILITIES_MAPPING } from './utilities-mapping';
+import {
+  normalizeColorValue,
+  normalizeSizeValue,
+  normalizeValue,
+} from '../utils/converterMappingByTailwindTheme';
 
 function prepareArbitraryValue(value: string) {
-  return value.replace(/_/g, '\\_').replace(/\s+/g, '_');
+  return normalizeValue(value).replace(/_/g, '\\_').replace(/\s+/g, '_');
 }
 
 function isAmbiguousValue(value: string) {
   return isCSSVariable(value);
 }
 
-function convertDeclarationValue(
+export function convertDeclarationValue(
   value: string,
   valuesMap: Record<string, string>,
   classPrefix: string,
   fallbackValue = value
 ) {
   if (valuesMap[value]) {
-    return [`${classPrefix}${valuesMap[value]}`];
+    if (valuesMap[value] === 'DEFAULT') {
+      return [classPrefix];
+    }
+
+    return [`${classPrefix}-${valuesMap[value]}`];
   }
 
   if (isAmbiguousValue(value)) {
     return [];
   }
 
-  return [`${classPrefix}[${prepareArbitraryValue(fallbackValue)}]`];
+  return [`${classPrefix}-[${prepareArbitraryValue(fallbackValue)}]`];
 }
 
 function convertDeclaration(
@@ -39,7 +46,7 @@ function convertDeclaration(
   return convertDeclarationValue(declaration.value, valuesMap, classPrefix);
 }
 
-function strictConvertDeclarationValue(
+export function strictConvertDeclarationValue(
   value: string,
   valuesMap: Record<string, string>
 ) {
@@ -58,10 +65,12 @@ function convertColorDeclarationValue(
   valuesMap: Record<string, string>,
   classPrefix: string
 ) {
-  const parsedColor = colord(declValue);
-  const value = parsedColor.isValid() ? parsedColor.toHex() : declValue;
-
-  return convertDeclarationValue(value, valuesMap, classPrefix, declValue);
+  return convertDeclarationValue(
+    normalizeColorValue(declValue),
+    valuesMap,
+    classPrefix,
+    declValue
+  );
 }
 
 function convertColorDeclaration(
@@ -82,11 +91,12 @@ function convertSizeDeclarationValue(
   classPrefix: string,
   remInPx: number | null | undefined
 ) {
-  const value = normalizeNumberValue(
-    remInPx ? remValueToPx(declValue, remInPx) : declValue
+  return convertDeclarationValue(
+    normalizeSizeValue(declValue, remInPx),
+    valuesMap,
+    classPrefix,
+    declValue
   );
-
-  return convertDeclarationValue(value, valuesMap, classPrefix, declValue);
 }
 
 function convertSizeDeclaration(
@@ -152,7 +162,7 @@ interface TailwindDeclarationConverters {
 
 export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
   'accent-color': (declaration, config) =>
-    convertColorDeclaration(declaration, config.mapping.accentColor, 'accent-'),
+    convertColorDeclaration(declaration, config.mapping.accentColor, 'accent'),
 
   'align-content': declaration =>
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['align-content']),
@@ -164,13 +174,13 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['align-self']),
 
   animation: (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.animation, 'animate-'),
+    convertDeclaration(declaration, config.mapping.animation, 'animate'),
 
   appearance: declaration =>
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['appearance']),
 
   'aspect-ratio': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.aspectRatio, 'aspect-'),
+    convertDeclaration(declaration, config.mapping.aspectRatio, 'aspect'),
 
   'backdrop-filter': (declaration, config) => {
     // TODO: transform to classes
@@ -193,10 +203,10 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['background-clip']),
 
   'background-color': (declaration, config) =>
-    convertColorDeclaration(declaration, config.mapping.backgroundColor, 'bg-'),
+    convertColorDeclaration(declaration, config.mapping.backgroundColor, 'bg'),
 
   'background-image': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.backgroundImage, 'bg-'),
+    convertDeclaration(declaration, config.mapping.backgroundImage, 'bg'),
 
   'background-origin': declaration =>
     strictConvertDeclaration(
@@ -205,7 +215,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     ),
 
   'background-position': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.backgroundPosition, 'bg-'),
+    convertDeclaration(declaration, config.mapping.backgroundPosition, 'bg'),
 
   'background-repeat': declaration =>
     strictConvertDeclaration(
@@ -217,28 +227,28 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.backgroundSize,
-      'bg-',
+      'bg',
       config.remInPx
     ),
 
   border: (declaration, config) =>
-    convertBorderDeclaration(declaration, config, 'border-'),
+    convertBorderDeclaration(declaration, config, 'border'),
 
   'border-bottom': (declaration, config) =>
-    convertBorderDeclaration(declaration, config, 'border-b-'),
+    convertBorderDeclaration(declaration, config, 'border-b'),
 
   'border-bottom-color': (declaration, config) =>
     convertColorDeclaration(
       declaration,
       config.mapping.borderColor,
-      'border-b-'
+      'border-b'
     ),
 
   'border-bottom-left-radius': (declaration, config) =>
     convertSizeDeclaration(
       declaration,
       config.mapping.borderRadius,
-      'rounded-bl-',
+      'rounded-bl',
       config.remInPx
     ),
 
@@ -246,7 +256,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.borderRadius,
-      'rounded-br-',
+      'rounded-br',
       config.remInPx
     ),
 
@@ -257,7 +267,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.borderWidth,
-      'border-b-',
+      'border-b',
       config.remInPx
     ),
 
@@ -265,16 +275,16 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['border-collapse']),
 
   'border-color': (declaration, config) =>
-    convertColorDeclaration(declaration, config.mapping.borderColor, 'border-'),
+    convertColorDeclaration(declaration, config.mapping.borderColor, 'border'),
 
   'border-left': (declaration, config) =>
-    convertBorderDeclaration(declaration, config, 'border-l-'),
+    convertBorderDeclaration(declaration, config, 'border-l'),
 
   'border-left-color': (declaration, config) =>
     convertColorDeclaration(
       declaration,
       config.mapping.borderColor,
-      'border-l-'
+      'border-l'
     ),
 
   // 'border-left-style': declaration =>
@@ -284,7 +294,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.borderWidth,
-      'border-l-',
+      'border-l',
       config.remInPx
     ),
 
@@ -292,18 +302,18 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.borderRadius,
-      'rounded-',
+      'rounded',
       config.remInPx
     ),
 
   'border-right': (declaration, config) =>
-    convertBorderDeclaration(declaration, config, 'border-r-'),
+    convertBorderDeclaration(declaration, config, 'border-r'),
 
   'border-right-color': (declaration, config) =>
     convertColorDeclaration(
       declaration,
       config.mapping.borderColor,
-      'border-r-'
+      'border-r'
     ),
 
   // 'border-right-style': declaration =>
@@ -313,7 +323,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.borderWidth,
-      'border-r-',
+      'border-r',
       config.remInPx
     ),
 
@@ -321,7 +331,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.borderSpacing,
-      'border-spacing-',
+      'border-spacing',
       config.remInPx
     ),
 
@@ -329,20 +339,20 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['border-style']),
 
   'border-top': (declaration, config) =>
-    convertBorderDeclaration(declaration, config, 'border-t-'),
+    convertBorderDeclaration(declaration, config, 'border-t'),
 
   'border-top-color': (declaration, config) =>
     convertColorDeclaration(
       declaration,
       config.mapping.borderColor,
-      'border-t-'
+      'border-t'
     ),
 
   'border-top-left-radius': (declaration, config) =>
     convertSizeDeclaration(
       declaration,
       config.mapping.borderRadius,
-      'rounded-tl-',
+      'rounded-tl',
       config.remInPx
     ),
 
@@ -350,7 +360,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.borderRadius,
-      'rounded-tr-',
+      'rounded-tr',
       config.remInPx
     ),
 
@@ -361,7 +371,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.borderWidth,
-      'border-t-',
+      'border-t',
       config.remInPx
     ),
 
@@ -369,7 +379,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.borderWidth,
-      'border-',
+      'border',
       config.remInPx
     ),
 
@@ -377,7 +387,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.inset,
-      'bottom-',
+      'bottom',
       config.remInPx
     ),
 
@@ -388,7 +398,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     ),
 
   'box-shadow': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.boxShadow, 'shadow-'),
+    convertDeclaration(declaration, config.mapping.boxShadow, 'shadow'),
 
   'box-sizing': declaration =>
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['box-sizing']),
@@ -403,19 +413,19 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['break-inside']),
 
   'caret-color': (declaration, config) =>
-    convertColorDeclaration(declaration, config.mapping.caretColor, 'caret-'),
+    convertColorDeclaration(declaration, config.mapping.caretColor, 'caret'),
 
   clear: declaration =>
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['clear']),
 
   color: (declaration, config) =>
-    convertColorDeclaration(declaration, config.mapping.textColor, 'text-'),
+    convertColorDeclaration(declaration, config.mapping.textColor, 'text'),
 
   'column-gap': (declaration, config) =>
     convertSizeDeclaration(
       declaration,
       config.mapping.gap,
-      'gap-x-',
+      'gap-x',
       config.remInPx
     ),
 
@@ -423,21 +433,21 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.columns,
-      'columns-',
+      'columns',
       config.remInPx
     ),
 
   content: (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.content, 'content-'),
+    convertDeclaration(declaration, config.mapping.content, 'content'),
 
   cursor: (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.cursor, 'cursor-'),
+    convertDeclaration(declaration, config.mapping.cursor, 'cursor'),
 
   display: declaration =>
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['display']),
 
   fill: (declaration, config) =>
-    convertColorDeclaration(declaration, config.mapping.fill, 'fill-'),
+    convertColorDeclaration(declaration, config.mapping.fill, 'fill'),
 
   filter: (declaration, config) => {
     // TODO: parse filters
@@ -445,13 +455,13 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
   },
 
   flex: (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.flex, 'flex-'),
+    convertDeclaration(declaration, config.mapping.flex, 'flex'),
 
   'flex-basis': (declaration, config) =>
     convertSizeDeclaration(
       declaration,
       config.mapping.flexBasis,
-      'basis-',
+      'basis',
       config.remInPx
     ),
 
@@ -464,10 +474,10 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
   },
 
   'flex-grow': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.flexGrow, 'grow-'),
+    convertDeclaration(declaration, config.mapping.flexGrow, 'grow'),
 
   'flex-shrink': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.flexShrink, 'shrink-'),
+    convertDeclaration(declaration, config.mapping.flexShrink, 'shrink'),
 
   'flex-wrap': declaration =>
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['flex-wrap']),
@@ -479,7 +489,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.fontSize,
-      'text-',
+      'text',
       config.remInPx
     ),
 
@@ -496,13 +506,13 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     ),
 
   'font-weight': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.fontWeight, 'font-'),
+    convertDeclaration(declaration, config.mapping.fontWeight, 'font'),
 
   gap: (declaration, config) =>
     convertSizeDeclaration(
       declaration,
       config.mapping.gap,
-      'gap-',
+      'gap',
       config.remInPx
     ),
 
@@ -515,26 +525,26 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertDeclaration(
       declaration,
       config.mapping.gridAutoColumns,
-      'auto-cols-'
+      'auto-cols'
     ),
 
   'grid-auto-flow': declaration =>
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['grid-auto-flow']),
 
   'grid-auto-rows': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.gridAutoRows, 'auto-rows-'),
+    convertDeclaration(declaration, config.mapping.gridAutoRows, 'auto-rows'),
 
   'grid-column': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.gridColumn, 'col-'),
+    convertDeclaration(declaration, config.mapping.gridColumn, 'col'),
 
   'grid-column-end': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.gridColumnEnd, 'col-end-'),
+    convertDeclaration(declaration, config.mapping.gridColumnEnd, 'col-end'),
 
   'grid-column-gap': (declaration, config) =>
     convertSizeDeclaration(
       declaration,
       config.mapping.gap,
-      'gap-x-',
+      'gap-x',
       config.remInPx
     ),
 
@@ -542,53 +552,53 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertDeclaration(
       declaration,
       config.mapping.gridColumnStart,
-      'col-start-'
+      'col-start'
     ),
 
   'grid-gap': (declaration, config) =>
     convertSizeDeclaration(
       declaration,
       config.mapping.gap,
-      'gap-',
+      'gap',
       config.remInPx
     ),
 
   'grid-row': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.gridRow, 'row-'),
+    convertDeclaration(declaration, config.mapping.gridRow, 'row'),
 
   'grid-row-end': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.gridRowEnd, 'row-end-'),
+    convertDeclaration(declaration, config.mapping.gridRowEnd, 'row-end'),
 
   'grid-row-gap': (declaration, config) =>
     convertSizeDeclaration(
       declaration,
       config.mapping.gap,
-      'gap-y-',
+      'gap-y',
       config.remInPx
     ),
 
   'grid-row-start': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.gridRowStart, 'row-start-'),
+    convertDeclaration(declaration, config.mapping.gridRowStart, 'row-start'),
 
   'grid-template-columns': (declaration, config) =>
     convertDeclaration(
       declaration,
       config.mapping.gridTemplateColumns,
-      'grid-cols-'
+      'grid-cols'
     ),
 
   'grid-template-rows': (declaration, config) =>
     convertDeclaration(
       declaration,
       config.mapping.gridTemplateRows,
-      'grid-rows-'
+      'grid-rows'
     ),
 
   height: (declaration, config) =>
     convertSizeDeclaration(
       declaration,
       config.mapping.height,
-      'h-',
+      'h',
       config.remInPx
     ),
 
@@ -608,7 +618,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.inset,
-      'left-',
+      'left',
       config.remInPx
     ),
 
@@ -616,7 +626,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.letterSpacing,
-      'tracking-',
+      'tracking',
       config.remInPx
     ),
 
@@ -624,7 +634,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.lineHeight,
-      'leading-',
+      'leading',
       config.remInPx
     ),
 
@@ -635,7 +645,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     ),
 
   'list-style-type': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.listStyleType, 'list-'),
+    convertDeclaration(declaration, config.mapping.listStyleType, 'list'),
 
   margin: (declaration, config) => {
     // TODO: parse margin
@@ -646,7 +656,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.margin,
-      'mb-',
+      'mb',
       config.remInPx
     ),
 
@@ -654,7 +664,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.margin,
-      'ml-',
+      'ml',
       config.remInPx
     ),
 
@@ -662,7 +672,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.margin,
-      'mr-',
+      'mr',
       config.remInPx
     ),
 
@@ -670,7 +680,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.margin,
-      'mt-',
+      'mt',
       config.remInPx
     ),
 
@@ -678,7 +688,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.maxHeight,
-      'max-h-',
+      'max-h',
       config.remInPx
     ),
 
@@ -686,7 +696,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.maxWidth,
-      'max-w-',
+      'max-w',
       config.remInPx
     ),
 
@@ -694,7 +704,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.minHeight,
-      'min-h-',
+      'min-h',
       config.remInPx
     ),
 
@@ -702,7 +712,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.minWidth,
-      'min-w-',
+      'min-w',
       config.remInPx
     ),
 
@@ -713,13 +723,13 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['object-fit']),
 
   'object-position': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.objectPosition, 'object-'),
+    convertDeclaration(declaration, config.mapping.objectPosition, 'object'),
 
   opacity: (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.opacity, 'opacity-'),
+    convertDeclaration(declaration, config.mapping.opacity, 'opacity'),
 
   order: (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.order, 'order-'),
+    convertDeclaration(declaration, config.mapping.order, 'order'),
 
   outline: declaration =>
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['outline']),
@@ -728,14 +738,14 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclaration(
       declaration,
       config.mapping.outlineColor,
-      'outline-'
+      'outline'
     ),
 
   'outline-offset': (declaration, config) =>
     convertSizeDeclaration(
       declaration,
       config.mapping.outlineOffset,
-      'outline-offset-',
+      'outline-offset',
       config.remInPx
     ),
 
@@ -746,7 +756,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.outlineWidth,
-      'outline-',
+      'outline',
       config.remInPx
     ),
 
@@ -787,7 +797,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.padding,
-      'pb-',
+      'pb',
       config.remInPx
     ),
 
@@ -795,7 +805,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.padding,
-      'pl-',
+      'pl',
       config.remInPx
     ),
 
@@ -803,7 +813,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.padding,
-      'pr-',
+      'pr',
       config.remInPx
     ),
 
@@ -811,7 +821,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.padding,
-      'pt-',
+      'pt',
       config.remInPx
     ),
 
@@ -846,7 +856,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.inset,
-      'right-',
+      'right',
       config.remInPx
     ),
 
@@ -854,7 +864,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.gap,
-      'gap-y-',
+      'gap-y',
       config.remInPx
     ),
 
@@ -870,7 +880,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.scrollMargin,
-      'scroll-mb-',
+      'scroll-mb',
       config.remInPx
     ),
 
@@ -878,7 +888,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.scrollMargin,
-      'scroll-ml-',
+      'scroll-ml',
       config.remInPx
     ),
 
@@ -886,7 +896,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.scrollMargin,
-      'scroll-mr-',
+      'scroll-mr',
       config.remInPx
     ),
 
@@ -894,7 +904,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.scrollMargin,
-      'scroll-mt-',
+      'scroll-mt',
       config.remInPx
     ),
 
@@ -907,7 +917,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.scrollPadding,
-      'scroll-pb-',
+      'scroll-pb',
       config.remInPx
     ),
 
@@ -915,7 +925,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.scrollPadding,
-      'scroll-pl-',
+      'scroll-pl',
       config.remInPx
     ),
 
@@ -923,7 +933,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.scrollPadding,
-      'scroll-pr-',
+      'scroll-pr',
       config.remInPx
     ),
 
@@ -931,7 +941,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.scrollPadding,
-      'scroll-pt-',
+      'scroll-pt',
       config.remInPx
     ),
 
@@ -953,13 +963,13 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     ),
 
   stroke: (declaration, config) =>
-    convertColorDeclaration(declaration, config.mapping.stroke, 'stroke-'),
+    convertColorDeclaration(declaration, config.mapping.stroke, 'stroke'),
 
   'stroke-width': (declaration, config) =>
     convertSizeDeclaration(
       declaration,
       config.mapping.strokeWidth,
-      'stroke-',
+      'stroke',
       config.remInPx
     ),
 
@@ -978,7 +988,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclaration(
       declaration,
       config.mapping.textDecorationColor,
-      'decoration-'
+      'decoration'
     ),
 
   'text-decoration-line': declaration =>
@@ -995,12 +1005,12 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.textDecorationThickness,
-      'decoration-',
+      'decoration',
       config.remInPx
     ),
 
   'text-indent': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.textIndent, 'indent-'),
+    convertDeclaration(declaration, config.mapping.textIndent, 'indent'),
 
   'text-overflow': declaration =>
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['text-overflow']),
@@ -1012,7 +1022,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.textUnderlineOffset,
-      'underline-offset-',
+      'underline-offset',
       config.remInPx
     ),
 
@@ -1020,7 +1030,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.inset,
-      'top-',
+      'top',
       config.remInPx
     ),
 
@@ -1033,7 +1043,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
   },
 
   'transform-origin': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.transformOrigin, 'origin-'),
+    convertDeclaration(declaration, config.mapping.transformOrigin, 'origin'),
 
   transition: (declaration, config) => {
     // TODO: parse transition
@@ -1041,27 +1051,27 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
   },
 
   'transition-delay': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.transitionDelay, 'delay-'),
+    convertDeclaration(declaration, config.mapping.transitionDelay, 'delay'),
 
   'transition-duration': (declaration, config) =>
     convertDeclaration(
       declaration,
       config.mapping.transitionDuration,
-      'duration-'
+      'duration'
     ),
 
   'transition-property': (declaration, config) =>
     convertDeclaration(
       declaration,
       config.mapping.transitionProperty,
-      'transition-'
+      'transition'
     ),
 
   'transition-timing-function': (declaration, config) =>
     convertDeclaration(
       declaration,
       config.mapping.transitionTimingFunction,
-      'ease-'
+      'ease'
     ),
 
   'user-select': declaration =>
@@ -1080,16 +1090,16 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertSizeDeclaration(
       declaration,
       config.mapping.width,
-      'w-',
+      'w',
       config.remInPx
     ),
 
   'will-change': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.willChange, 'will-change-'),
+    convertDeclaration(declaration, config.mapping.willChange, 'will-change'),
 
   'word-break': declaration =>
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['word-break']),
 
   'z-index': (declaration, config) =>
-    convertDeclaration(declaration, config.mapping.zIndex, 'z-'),
+    convertDeclaration(declaration, config.mapping.zIndex, 'z'),
 };
