@@ -32,8 +32,8 @@ export function normalizeSizeValue(
   );
 }
 
-export function normalizeScreenValue(screenValue: string) {
-  return screenValue.replace(/\(|\)/g, '');
+export function normalizeAtRuleParams(atRuleParam: string) {
+  return removeUnnecessarySpaces(atRuleParam.replace(/\(|\)/g, ''));
 }
 
 function mapThemeTokens<V>(
@@ -134,7 +134,7 @@ function convertScreens(screens: ScreensConfig) {
 
   return mapThemeTokens(screens, screenValue => {
     return screenValue
-      ? normalizeScreenValue(buildMediaQueryByScreen(screenValue))
+      ? normalizeAtRuleParams(buildMediaQueryByScreen(screenValue))
       : null;
   });
 }
