@@ -1,0 +1,10 @@
+export const MEDIA_PARAM_MAPPING = {
+  print: 'print',
+  'orientation:portrait': 'portrait',
+  'orientation:landscape': 'landscape',
+  'prefers-contrast:more': 'contrast-more',
+  'prefers-contrast:less': 'contrast-less',
+  'prefers-color-scheme:dark': 'dark',
+  'prefers-reduced-motion:no-preference': 'safe',
+  'prefers-reduced-motion:reduce': 'motion-reduce',
+};
