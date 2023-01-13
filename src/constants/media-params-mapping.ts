@@ -1,4 +1,4 @@
-export const MEDIA_PARAM_MAPPING = {
+export const MEDIA_PARAMS_MAPPING = {
   print: 'print',
   'orientation:portrait': 'portrait',
   'orientation:landscape': 'landscape',
