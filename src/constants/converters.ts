@@ -21,7 +21,8 @@ export function convertDeclarationValue(
   value: string,
   valuesMap: Record<string, string>,
   classPrefix: string,
-  fallbackValue = value
+  fallbackValue = value,
+  fallbackClassPrefix = classPrefix
 ) {
   if (valuesMap[value]) {
     if (valuesMap[value] === 'DEFAULT') {
@@ -35,7 +36,7 @@ export function convertDeclarationValue(
     return [];
   }
 
-  return [`${classPrefix}-[${prepareArbitraryValue(fallbackValue)}]`];
+  return [`${fallbackClassPrefix}-[${prepareArbitraryValue(fallbackValue)}]`];
 }
 
 function convertDeclaration(
@@ -96,19 +97,13 @@ function convertSizeDeclarationValue(
   const isNegativeValue =
     supportsNegativeValues && normalizedValue.startsWith('-');
 
-  return isNegativeValue
-    ? convertDeclarationValue(
-        normalizedValue.substring(1),
-        valuesMap,
-        classPrefix,
-        declValue
-      ).map(className => `-${className}`)
-    : convertDeclarationValue(
-        normalizedValue,
-        valuesMap,
-        classPrefix,
-        declValue
-      );
+  return convertDeclarationValue(
+    isNegativeValue ? normalizedValue.substring(1) : normalizedValue,
+    valuesMap,
+    isNegativeValue ? `-${classPrefix}` : classPrefix,
+    declValue,
+    classPrefix
+  );
 }
 
 function convertSizeDeclaration(
