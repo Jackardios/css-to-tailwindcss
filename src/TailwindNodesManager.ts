@@ -1,89 +1,113 @@
-import type { Declaration } from 'postcss';
-import type { SetPartialProps } from './types/utils/SetPartialProps';
+import type { AtRule, Rule } from 'postcss';
+import { isAtRuleNode } from './utils/isAtRuleNode';
+import { isChildNode } from './utils/isChildNode';
 
-export interface TailwindNode {
-  selector: string;
+export interface ResolvedTailwindNode {
+  rule: Rule;
   tailwindClasses: string[];
-  skippedDeclarations: Declaration[];
 }
 
-export type MergeableNode =
-  | SetPartialProps<TailwindNode, 'tailwindClasses'>
-  | SetPartialProps<TailwindNode, 'skippedDeclarations'>;
+export interface UnresolvedTailwindNode {
+  key: string;
+  fallbackRule: Rule;
+  classesPrefixWhenFound: string;
+  tailwindClasses: string[];
+}
+
+export type TailwindNode = ResolvedTailwindNode | UnresolvedTailwindNode;
+
+export function isResolvedTailwindNode(
+  node: TailwindNode
+): node is ResolvedTailwindNode {
+  return 'rule' in node;
+}
+
+export function isUnresolvedTailwindNode(
+  node: TailwindNode
+): node is UnresolvedTailwindNode {
+  return !isResolvedTailwindNode(node);
+}
 
 export class TailwindNodesManager {
-  protected nodes: TailwindNode[];
-  protected nodesMap: Record<TailwindNode['selector'], number> = {};
+  protected nodesMap: Map<string, ResolvedTailwindNode>;
 
-  constructor(initialNodes: TailwindNode[] = []) {
-    this.nodes = initialNodes;
-    this.refreshNodesMap();
+  constructor(initialNodes?: TailwindNode[]) {
+    this.nodesMap = new Map();
+    if (initialNodes?.length) {
+      this.mergeNodes(initialNodes);
+    }
   }
 
-  getNodeIndexBySelector(selector: string) {
-    return this.nodesMap[selector];
+  mergeNode(node: TailwindNode) {
+    const nodeIsResolved = isResolvedTailwindNode(node);
+    const key = nodeIsResolved
+      ? TailwindNodesManager.convertRuleToKey(node.rule)
+      : node.key;
+    const foundNode = this.nodesMap.get(key);
+
+    if (!foundNode) {
+      if (nodeIsResolved) {
+        this.nodesMap.set(key, node);
+      } else {
+        this.nodesMap.set(
+          TailwindNodesManager.convertRuleToKey(node.fallbackRule),
+          {
+            rule: node.fallbackRule,
+            tailwindClasses: node.tailwindClasses,
+          }
+        );
+      }
+      return;
+    }
+
+    foundNode.tailwindClasses = foundNode.tailwindClasses.concat(
+      nodeIsResolved
+        ? node.tailwindClasses
+        : node.tailwindClasses.map(
+            className => `${node.classesPrefixWhenFound}${className}`
+          )
+    );
   }
 
-  getNodeBySelector(selector: string) {
-    return this.nodes[this.getNodeIndexBySelector(selector)];
+  mergeNodes(nodes: TailwindNode[]) {
+    nodes.forEach(node => {
+      this.mergeNode(node);
+    });
+  }
+
+  hasNode(key: string) {
+    return this.nodesMap.has(key);
+  }
+
+  getNode(key: string) {
+    return this.nodesMap.get(key) || null;
   }
 
   getNodes() {
-    return this.nodes;
+    return Array.from(this.nodesMap.values());
   }
 
-  mergeNode(mergeableNode: MergeableNode) {
-    let node = this.getNodeBySelector(mergeableNode.selector);
+  static convertRuleToKey(rule: Rule) {
+    let currentParent = rule.parent;
+    let parentKey = '';
 
-    if (node) {
-      if (mergeableNode.tailwindClasses) {
-        node.tailwindClasses = [
-          ...new Set([
-            ...node.tailwindClasses,
-            ...mergeableNode.tailwindClasses,
-          ]),
-        ];
-      }
-      if (mergeableNode.skippedDeclarations) {
-        node.skippedDeclarations = [
-          ...node.skippedDeclarations,
-          ...mergeableNode.skippedDeclarations,
-        ];
-      }
-    } else {
-      node = {
-        selector: mergeableNode.selector,
-        tailwindClasses: mergeableNode.tailwindClasses || [],
-        skippedDeclarations: mergeableNode.skippedDeclarations || [],
-      };
-      this.addNode(node);
+    while (isChildNode(currentParent)) {
+      parentKey +=
+        (isAtRuleNode(currentParent)
+          ? this.makeSingleAtRuleKey(currentParent)
+          : this.makeSingleRuleKey(currentParent)) + '__';
+
+      currentParent = currentParent.parent;
     }
 
-    return node;
+    return parentKey + rule.selector;
   }
 
-  mergeNodes(nodes: MergeableNode[]) {
-    nodes.forEach(node => this.mergeNode(node));
-
-    return this;
+  protected static makeSingleAtRuleKey(atRule: AtRule) {
+    return 'a(' + atRule.name + '|' + atRule.params + ')';
   }
 
-  mergeNodesManager(nodesManager: TailwindNodesManager) {
-    return this.mergeNodes(nodesManager.getNodes());
-  }
-
-  protected addNode(node: TailwindNode) {
-    this.nodesMap[node.selector] = this.nodes.push(node) - 1;
-
-    return this;
-  }
-
-  protected refreshNodesMap() {
-    this.nodesMap = this.nodes.reduce((nodesMap, node, index) => {
-      nodesMap[node.selector] = index;
-      return nodesMap;
-    }, {} as Record<TailwindNode['selector'], number>);
-
-    return this;
+  protected static makeSingleRuleKey(atRule: Rule) {
+    return 'r(' + atRule.selector + ')';
   }
 }
