@@ -19,6 +19,28 @@ describe('reduceTailwindClasses()', () => {
     expect(
       reduceTailwindClasses([
         'foo',
+        'hover:ml-13',
+        'bar',
+        'ml-[123px]',
+        'md-18',
+        'mr-[123px]',
+        'mt-13',
+        'mb-13',
+        'mx1',
+      ])
+    ).toEqual([
+      'foo',
+      'hover:ml-13',
+      'bar',
+      'md-18',
+      'mx1',
+      'mx-[123px]',
+      'my-13',
+    ]);
+
+    expect(
+      reduceTailwindClasses([
+        'foo',
         'ml-13',
         'bar',
         'md-18',
