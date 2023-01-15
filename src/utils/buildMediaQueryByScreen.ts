@@ -15,15 +15,15 @@ export function buildMediaQueryByScreen(screens: string | Screen | Screen[]) {
 
       let conditions = [];
       if ('min' in screen && screen['min']) {
-        conditions.push(`min-width: ${screen['min']}`);
+        conditions.push(`(min-width: ${screen['min']})`);
       }
 
       if ('max' in screen && screen['max']) {
-        conditions.push(`max-width: ${screen['max']}`);
+        conditions.push(`(max-width: ${screen['max']})`);
       }
 
       if (conditions.length) {
-        return '(' + conditions.join(' and ') + ')';
+        return conditions.join(' and ');
       }
 
       return null;
