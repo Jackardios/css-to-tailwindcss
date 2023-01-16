@@ -1,6 +1,7 @@
 import type { AttributeSelector, Selector } from 'css-what';
-import type {
+import {
   AcceptedPlugin,
+  AtRule,
   Container,
   Declaration,
   Document,
@@ -9,7 +10,7 @@ import type {
 import type { Config } from 'tailwindcss';
 import type { ConverterMapping } from './types/ConverterMapping';
 
-import postcss, { Comment } from 'postcss';
+import postcss from 'postcss';
 import postcssSafeParser from 'postcss-safe-parser';
 import resolveConfig from 'tailwindcss/resolveConfig';
 import { parse, stringify } from 'css-what';
@@ -90,10 +91,23 @@ export class TailwindConverter {
     const nodes = nodesManager.getNodes();
     nodes.forEach(node => {
       node.rule.prepend(
-        new Comment({
-          text: '@apply ' + node.tailwindClasses.join(' ') + ';\n',
+        new AtRule({
+          name: 'apply',
+          params: node.tailwindClasses.join(' '),
         })
       );
+    });
+
+    // clean empty rules and at-rules
+    parsed.root.walkRules(node => {
+      if (node.nodes?.length === 0) {
+        node.remove();
+      }
+    });
+    parsed.root.walkAtRules(node => {
+      if (node.nodes?.length === 0) {
+        node.remove();
+      }
     });
 
     return {
