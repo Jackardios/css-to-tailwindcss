@@ -5,6 +5,6 @@ export const MEDIA_PARAMS_MAPPING = {
   'prefers-contrast:more': 'contrast-more',
   'prefers-contrast:less': 'contrast-less',
   'prefers-color-scheme:dark': 'dark',
-  'prefers-reduced-motion:no-preference': 'safe',
+  'prefers-reduced-motion:no-preference': 'motion-safe',
   'prefers-reduced-motion:reduce': 'motion-reduce',
 };
