@@ -5,6 +5,44 @@ class TailwindClassesReductionManager {
   protected map: Record<string, any> = {
     m: { mx: { ml: [], mr: [] }, my: { mt: [], mb: [] } },
     p: { px: { pl: [], pr: [] }, py: { pt: [], pb: [] } },
+    'scroll-m': {
+      'scroll-mx': {
+        'scroll-ml': [],
+        'scroll-mr': [],
+      },
+      'scroll-my': {
+        'scroll-mt': [],
+        'scroll-mb': [],
+      },
+    },
+    'scroll-p': {
+      'scroll-px': {
+        'scroll-pl': [],
+        'scroll-pr': [],
+      },
+      'scroll-py': {
+        'scroll-pt': [],
+        'scroll-pb': [],
+      },
+    },
+    rounded: {
+      'rounded-t': {
+        'rounded-tl': [],
+        'rounded-tr': [],
+      },
+      'rounded-r': {
+        'rounded-tr': [],
+        'rounded-br': [],
+      },
+      'rounded-b': {
+        'rounded-bl': [],
+        'rounded-br': [],
+      },
+      'rounded-l': {
+        'rounded-tl': [],
+        'rounded-bl': [],
+      },
+    },
     border: {
       'border-x': {
         'border-l': [],
