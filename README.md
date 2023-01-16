@@ -58,7 +58,9 @@ const inputCSS = `
   margin-left: 16px;
   text-align: center;
   font-size: 12px;
-  transition: all 200ms cubic-bezier(0.4, 0, 1, 1);
+  transition: color, background-color, border-color, text-decoration-color, fill,
+    stroke 200ms cubic-bezier(0, 0, 0.2, 1);
+  animation-delay: 200ms;
 
   &:hover {
     filter: blur(4px) brightness(0.5) sepia(100%) contrast(1) hue-rotate(30deg)
