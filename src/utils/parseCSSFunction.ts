@@ -1,4 +1,4 @@
-const cssFunctionRegexp = /(?<name>[\w-]+)\((?<value>.*)\)/;
+const cssFunctionRegexp = /(?<name>[\w-]+)\((?<value>.*?)\)/;
 
 export function parseCSSFunction(string: string) {
   const { name, value } = string.match(cssFunctionRegexp)?.groups || {};
