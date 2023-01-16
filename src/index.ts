@@ -1,1 +1,1 @@
-export { TailwindConverter } from './TailwindConverter';
+export * from './TailwindConverter';
