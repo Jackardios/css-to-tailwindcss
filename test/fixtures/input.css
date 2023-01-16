@@ -12,6 +12,13 @@
   align-content: center; /* duplicate */
   align-content: flex-end; /* duplicate with another value */
 
+  &::after {
+    content: '*';
+    user-select: text;
+    vertical-align: text-top;
+    transform-origin: top;
+  }
+
   [aria-role='button'] {
     /* unconvertable aria selector */
     text-transform: uppercase;
@@ -32,9 +39,6 @@
       filter, backdrop-filter;
     transition-timing-function: cubic-bezier(0.4, 0, 1, 1);
     transform: some invalid-transform;
-    user-select: text;
-    vertical-align: text-top;
-    transform-origin: top;
   }
 
   &[aria-hidden='false'] {
@@ -47,7 +51,8 @@
     z-index: 40;
     transform: translateX(12px) translateY(-0.5em) skew(1deg, 3deg)
       scale(-0.75, 1.05) rotate(-0.25turn);
-    transition: all 200ms ease;
+    transition: color, background-color, border-color, text-decoration-color,
+      fill, stroke 200ms cubic-bezier(0, 0, 0.2, 1);
   }
 
   .bar {
@@ -61,6 +66,9 @@
     page-break-inside: auto;
     transform: translate(10px 0.625rem) skew(2deg) scale(-0.75, -0.75)
       rotate(-45deg);
+    transition: transform 200ms cubic-bezier(0, 0, 0.2, 1), color,
+      background-color, border-color, text-decoration-color, fill,
+      stroke 200ms cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .baz {
