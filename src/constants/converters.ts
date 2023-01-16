@@ -1,20 +1,16 @@
 import type { Declaration } from 'postcss';
 import type { ResolvedTailwindConverterConfig } from '../TailwindConverter';
 
-import { isCSSVariable } from '../utils/isCSSVariable';
 import { UTILITIES_MAPPING } from './utilities-mapping';
 import {
   normalizeColorValue,
   normalizeSizeValue,
   normalizeValue,
 } from '../utils/converterMappingByTailwindTheme';
+import { everyCSSFunction } from '../utils/everyCSSFunction';
 
 function prepareArbitraryValue(value: string) {
   return normalizeValue(value).replace(/_/g, '\\_').replace(/\s+/g, '_');
-}
-
-function isAmbiguousValue(value: string) {
-  return isCSSVariable(value);
 }
 
 export function convertDeclarationValue(
@@ -30,10 +26,6 @@ export function convertDeclarationValue(
     }
 
     return [`${classPrefix}-${valuesMap[value]}`];
-  }
-
-  if (isAmbiguousValue(value)) {
-    return [];
   }
 
   return [`${fallbackClassPrefix}-[${prepareArbitraryValue(fallbackValue)}]`];
@@ -162,6 +154,54 @@ function convertBorderDeclaration(
   return classes;
 }
 
+function parseComposedSpacingValue(value: string) {
+  const values = value.split(/\s+/);
+
+  if (values.length > 4) {
+    return { top: null, right: null, bottom: null, left: null };
+  }
+
+  return {
+    top: values[0],
+    right: values[1] || values[0],
+    bottom: values[2] || values[0],
+    left: values[3] || values[1] || values[0],
+  };
+}
+
+export function convertComposedSpacingDeclarationValue(
+  value: string,
+  mapping: {
+    top: { valuesMapping: Record<string, string>; classPrefix: string };
+    right: { valuesMapping: Record<string, string>; classPrefix: string };
+    bottom: { valuesMapping: Record<string, string>; classPrefix: string };
+    left: { valuesMapping: Record<string, string>; classPrefix: string };
+  },
+  remInPx: number | null | undefined
+) {
+  const parsed = parseComposedSpacingValue(value);
+  let classes: string[] = [];
+
+  (Object.keys(parsed) as ['top', 'right', 'bottom', 'left']).forEach(key => {
+    const value = parsed[key];
+    const { valuesMapping, classPrefix } = mapping[key] || {};
+
+    if (value && valuesMapping && classPrefix) {
+      classes = classes.concat(
+        convertSizeDeclarationValue(
+          value,
+          valuesMapping,
+          classPrefix,
+          remInPx,
+          true
+        )
+      );
+    }
+  });
+
+  return classes;
+}
+
 interface TailwindDeclarationConverters {
   [property: string]: (
     declaration: Declaration,
@@ -192,8 +232,47 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertDeclaration(declaration, config.mapping.aspectRatio, 'aspect'),
 
   'backdrop-filter': (declaration, config) => {
-    // TODO: transform to classes
-    return [];
+    let classes: string[] = [];
+    const mappings: Record<string, any> = {
+      blur: config.mapping.backdropBlur,
+      brightness: config.mapping.backdropBrightness,
+      contrast: config.mapping.backdropContrast,
+      grayscale: config.mapping.backdropGrayscale,
+      'hue-rotate': config.mapping.backdropHueRotate,
+      invert: config.mapping.backdropInvert,
+      opacity: config.mapping.backdropOpacity,
+      saturate: config.mapping.backdropSaturate,
+      sepia: config.mapping.backdropSepia,
+    };
+
+    everyCSSFunction(declaration.value, ({ name, value }) => {
+      if (name == null || value == null) {
+        classes = [];
+        return false;
+      }
+
+      const mapping = mappings[name];
+
+      if (mapping) {
+        delete mappings[name];
+
+        const currentClasses = convertSizeDeclarationValue(
+          value,
+          mapping,
+          `backdrop-${name}`,
+          config.remInPx
+        );
+
+        if (currentClasses?.length) {
+          classes = classes.concat(currentClasses);
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    return classes;
   },
 
   'background-attachment': declaration =>
@@ -460,8 +539,48 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclaration(declaration, config.mapping.fill, 'fill'),
 
   filter: (declaration, config) => {
-    // TODO: parse filters
-    return [];
+    let classes: string[] = [];
+    const mappings: Record<string, any> = {
+      blur: config.mapping.blur,
+      brightness: config.mapping.brightness,
+      contrast: config.mapping.contrast,
+      grayscale: config.mapping.grayscale,
+      'hue-rotate': config.mapping.hueRotate,
+      invert: config.mapping.invert,
+      opacity: config.mapping.opacity,
+      saturate: config.mapping.saturate,
+      sepia: config.mapping.sepia,
+      // 'drop-shadow': config.mapping.dropShadow,
+    };
+
+    everyCSSFunction(declaration.value, ({ name, value }) => {
+      if (name == null || value == null) {
+        classes = [];
+        return false;
+      }
+
+      const mapping = mappings[name];
+
+      if (mapping) {
+        delete mapping[name];
+
+        const currentClasses = convertSizeDeclarationValue(
+          value,
+          mapping,
+          name,
+          config.remInPx
+        );
+
+        if (currentClasses?.length) {
+          classes = classes.concat(currentClasses);
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    return classes;
   },
 
   flex: (declaration, config) =>
@@ -668,10 +787,17 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
   'list-style-type': (declaration, config) =>
     convertDeclaration(declaration, config.mapping.listStyleType, 'list'),
 
-  margin: (declaration, config) => {
-    // TODO: parse margin
-    return [];
-  },
+  margin: (declaration, config) =>
+    convertComposedSpacingDeclarationValue(
+      declaration.value,
+      {
+        top: { valuesMapping: config.mapping.margin, classPrefix: 'mt' },
+        right: { valuesMapping: config.mapping.margin, classPrefix: 'mr' },
+        bottom: { valuesMapping: config.mapping.margin, classPrefix: 'mb' },
+        left: { valuesMapping: config.mapping.margin, classPrefix: 'ml' },
+      },
+      config.remInPx
+    ),
 
   'margin-bottom': (declaration, config) =>
     convertSizeDeclaration(
@@ -820,10 +946,17 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       UTILITIES_MAPPING['overscroll-behavior-y']
     ),
 
-  padding: (declaration, config) => {
-    // TODO: parse padding
-    return [];
-  },
+  padding: (declaration, config) =>
+    convertComposedSpacingDeclarationValue(
+      declaration.value,
+      {
+        top: { valuesMapping: config.mapping.padding, classPrefix: 'pt' },
+        right: { valuesMapping: config.mapping.padding, classPrefix: 'pr' },
+        bottom: { valuesMapping: config.mapping.padding, classPrefix: 'pb' },
+        left: { valuesMapping: config.mapping.padding, classPrefix: 'pl' },
+      },
+      config.remInPx
+    ),
 
   'padding-bottom': (declaration, config) =>
     convertSizeDeclaration(
@@ -904,10 +1037,29 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
   'scroll-behavior': declaration =>
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['scroll-behavior']),
 
-  'scroll-margin': (declaration, config) => {
-    // TODO: parse scroll margin
-    return [];
-  },
+  'scroll-margin': (declaration, config) =>
+    convertComposedSpacingDeclarationValue(
+      declaration.value,
+      {
+        top: {
+          valuesMapping: config.mapping.scrollMargin,
+          classPrefix: 'scroll-mt',
+        },
+        right: {
+          valuesMapping: config.mapping.scrollMargin,
+          classPrefix: 'scroll-mr',
+        },
+        bottom: {
+          valuesMapping: config.mapping.scrollMargin,
+          classPrefix: 'scroll-mb',
+        },
+        left: {
+          valuesMapping: config.mapping.scrollMargin,
+          classPrefix: 'scroll-ml',
+        },
+      },
+      config.remInPx
+    ),
 
   'scroll-margin-bottom': (declaration, config) =>
     convertSizeDeclaration(
@@ -945,10 +1097,29 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       true
     ),
 
-  'scroll-padding': (declaration, config) => {
-    // TODO: parse scroll padding
-    return [];
-  },
+  'scroll-padding': (declaration, config) =>
+    convertComposedSpacingDeclarationValue(
+      declaration.value,
+      {
+        top: {
+          valuesMapping: config.mapping.scrollPadding,
+          classPrefix: 'scroll-pt',
+        },
+        right: {
+          valuesMapping: config.mapping.scrollPadding,
+          classPrefix: 'scroll-pr',
+        },
+        bottom: {
+          valuesMapping: config.mapping.scrollPadding,
+          classPrefix: 'scroll-pb',
+        },
+        left: {
+          valuesMapping: config.mapping.scrollPadding,
+          classPrefix: 'scroll-pl',
+        },
+      },
+      config.remInPx
+    ),
 
   'scroll-padding-bottom': (declaration, config) =>
     convertSizeDeclaration(
@@ -1082,8 +1253,65 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     strictConvertDeclaration(declaration, UTILITIES_MAPPING['touch-action']),
 
   transform: (declaration, config) => {
-    // TODO: parse transform
-    return [];
+    let classes: string[] = [];
+    const mappings: Record<
+      string,
+      { mapping: Record<string, string>; classPrefix: string }
+    > = {
+      scale: { mapping: config.mapping.scale, classPrefix: 'scale' },
+      scaleX: { mapping: config.mapping.scale, classPrefix: 'scale-x' },
+      scaleY: { mapping: config.mapping.scale, classPrefix: 'scale-y' },
+      translate: {
+        mapping: config.mapping.translate,
+        classPrefix: 'translate',
+      },
+      translateX: {
+        mapping: config.mapping.translate,
+        classPrefix: 'translate-x',
+      },
+      translateY: {
+        mapping: config.mapping.translate,
+        classPrefix: 'translate-y',
+      },
+      skewX: {
+        mapping: config.mapping.skew,
+        classPrefix: 'skew-x',
+      },
+      skewY: {
+        mapping: config.mapping.skew,
+        classPrefix: 'skew-y',
+      },
+      rotate: { mapping: config.mapping.rotate, classPrefix: 'rotate' },
+    };
+
+    everyCSSFunction(declaration.value, ({ name, value }) => {
+      if (name == null || value == null) {
+        classes = [];
+        return false;
+      }
+
+      const mappingItem = mappings[name];
+
+      if (mappingItem) {
+        delete mappings[name];
+
+        const currentClasses = convertSizeDeclarationValue(
+          value,
+          mappingItem.mapping,
+          mappingItem.classPrefix,
+          config.remInPx
+        );
+
+        if (currentClasses?.length) {
+          classes = classes.concat(currentClasses);
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    return classes;
   },
 
   'transform-origin': (declaration, config) =>
