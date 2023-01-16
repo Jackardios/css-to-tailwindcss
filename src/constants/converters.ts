@@ -8,6 +8,7 @@ import {
   normalizeValue,
 } from '../utils/converterMappingByTailwindTheme';
 import { parseCSSFunctions } from '../utils/parseCSSFunctions';
+import { removeUnnecessarySpaces } from '../utils/removeUnnecessarySpaces';
 
 function prepareArbitraryValue(value: string) {
   return normalizeValue(value).replace(/_/g, '\\_').replace(/\s+/g, '_');
@@ -1618,8 +1619,7 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
   transition: (declaration, config) => {
     let classes: string[] = [];
 
-    const parsed = declaration.value
-      .trim()
+    const parsed = removeUnnecessarySpaces(declaration.value.trim())
       .split(/\s+/m)
       .map(v => v.trim());
 
