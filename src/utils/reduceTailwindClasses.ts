@@ -53,6 +53,10 @@ class TailwindClassesReductionManager {
         'border-b': [],
       },
     },
+    scale: {
+      'scale-x': [],
+      'scale-y': [],
+    },
     inset: {
       'inset-x': {
         left: [],
