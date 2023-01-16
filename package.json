@@ -122,7 +122,6 @@
     ]
   },
   "dependencies": {
-    "change-case": "^4.1.2",
     "colord": "^2.9.3",
     "css-what": "^6.1.0",
     "postcss": "^8.4.20",
