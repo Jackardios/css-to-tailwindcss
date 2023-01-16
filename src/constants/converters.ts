@@ -655,11 +655,6 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       UTILITIES_MAPPING['flex-direction']
     ),
 
-  'flex-flow': (declaration, config) => {
-    // TODO: parse flex-flow
-    return [];
-  },
-
   'flex-grow': (declaration, config) =>
     convertDeclarationValue(declaration.value, config.mapping.flexGrow, 'grow'),
 
@@ -722,11 +717,6 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       'gap',
       config.remInPx
     ),
-
-  grid: (declaration, config) => {
-    // TODO: parse grid
-    return [];
-  },
 
   'grid-auto-columns': (declaration, config) =>
     convertDeclarationValue(
@@ -1376,9 +1366,14 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       UTILITIES_MAPPING['text-align']
     ),
 
-  'text-decoration': (declaration, config) => {
-    // TODO: parse text-decoration
-    return [];
+  'text-decoration': declaration => {
+    const parsed = declaration.value.trim().split(/\s+/m);
+    return parsed.length === 1
+      ? strictConvertDeclarationValue(
+          parsed[0],
+          UTILITIES_MAPPING['text-decoration-line']
+        )
+      : [];
   },
 
   'text-decoration-color': (declaration, config) =>
@@ -1621,8 +1616,70 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     ),
 
   transition: (declaration, config) => {
-    // TODO: parse transition
-    return [];
+    let classes: string[] = [];
+
+    const parsed = declaration.value
+      .trim()
+      .split(/\s+/m)
+      .map(v => v.trim());
+
+    if (parsed.length > 4) {
+      return [];
+    }
+
+    if (parsed[0]) {
+      classes = classes.concat(
+        convertDeclarationValue(
+          parsed[0],
+          config.mapping.transitionProperty,
+          'transition'
+        )
+      );
+    }
+
+    if (parsed[1]) {
+      classes = classes.concat(
+        convertDeclarationValue(
+          parsed[1],
+          config.mapping.transitionDuration,
+          'duration'
+        )
+      );
+    }
+
+    if (parsed[2]) {
+      const isTimingFunction = isNaN(parseFloat(parsed[2]));
+
+      if (isTimingFunction) {
+        classes = classes.concat(
+          convertDeclarationValue(
+            parsed[2],
+            config.mapping.transitionTimingFunction,
+            'ease'
+          )
+        );
+      } else {
+        classes = classes.concat(
+          convertDeclarationValue(
+            parsed[2],
+            config.mapping.transitionDelay,
+            'delay'
+          )
+        );
+      }
+    }
+
+    if (parsed[3]) {
+      classes = classes.concat(
+        convertDeclarationValue(
+          parsed[3],
+          config.mapping.transitionDelay,
+          'delay'
+        )
+      );
+    }
+
+    return classes;
   },
 
   'transition-delay': (declaration, config) =>
