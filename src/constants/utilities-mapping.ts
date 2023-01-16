@@ -199,6 +199,8 @@ export const UTILITIES_MAPPING = {
     'space-evenly': 'justify-evenly',
   },
   'justify-items': {
+    'flex-start': 'justify-items-start',
+    'flex-end': 'justify-items-end',
     start: 'justify-items-start',
     end: 'justify-items-end',
     center: 'justify-items-center',
@@ -206,6 +208,8 @@ export const UTILITIES_MAPPING = {
   },
   'justify-self': {
     auto: 'justify-self-auto',
+    'flex-start': 'justify-self-start',
+    'flex-end': 'justify-self-end',
     start: 'justify-self-start',
     end: 'justify-self-end',
     center: 'justify-self-center',
