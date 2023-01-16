@@ -1,10 +1,12 @@
-# Convert CSS to TailwindCSS
+# Convert CSS to TailwindCSS 3.x
 
 [![npm package][npm-img]][npm-url]
 [![Build Status][build-img]][build-url]
 [![Downloads][downloads-img]][downloads-url]
 [![Issues][issues-img]][issues-url]
 [![Semantic Release][semantic-release-img]][semantic-release-url]
+
+> Convert your CSS to TailwindCSS 3.x respecting TailwindCSS configuration
 
 ## Install
 
