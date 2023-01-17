@@ -31,15 +31,14 @@
     "node": ">=12.0"
   },
   "keywords": [
-    "boilerplate",
-    "template",
-    "typescript",
-    "vscode",
-    "jest",
-    "husky",
-    "commitizen",
-    "semantic-release",
-    "codecov"
+    "convert",
+    "converter",
+    "conversion",
+    "css",
+    "postcss",
+    "tailwind",
+    "tailwindcss",
+    "css-to-tailwind"
   ],
   "bugs": {
     "url": "https://github.com/jackardios/css-to-tailwindcss/issues"
