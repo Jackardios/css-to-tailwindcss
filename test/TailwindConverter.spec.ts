@@ -1,5 +1,10 @@
 import { TailwindConverter } from '../src/TailwindConverter';
-import { inputCSS } from './fixtures/testing-data';
+import fs from 'fs';
+import path from 'path';
+
+const inputCSS: string = fs
+  .readFileSync(path.resolve(__dirname, './fixtures/input.css'))
+  .toString();
 
 function createTailwindConverter() {
   return new TailwindConverter({
