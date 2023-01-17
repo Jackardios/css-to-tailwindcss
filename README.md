@@ -8,6 +8,8 @@
 
 > Convert your CSS to TailwindCSS 3.x respecting TailwindCSS configuration
 
+## [🔗 Codesandbox demo](https://codesandbox.io/s/css-to-tailwindcss-demo-yr1ser)
+
 ## Install
 
 ```bash
