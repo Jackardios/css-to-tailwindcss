@@ -123,7 +123,7 @@ Console output
 }
 
 .foo {
-  @apply text-center text-xs transition-colors duration-200 ease-out ml-4 px-64 py-[0.875em] hover:blur-sm hover:brightness-50 hover:sepia hover:contrast-100 hover:hue-rotate-30 hover:invert-0 hover:opacity-5 hover:saturate-150 hover:text-custom-color-gold hover:text-xl disabled:w-3/12 disabled:text-[var(--some-color)] disabled:text-[1em] md:inset-x-1/4 md:inset-y-auto custom-screen:min-w-full custom-screen:-mr-6 supports-grid:grid supports-grid:col-span-1;
+  @apply text-center text-xs transition-colors duration-200 ease-out ml-4 px-64 py-[0.875em] hover:blur-sm hover:brightness-50 hover:sepia hover:contrast-100 hover:hue-rotate-30 hover:invert-0 hover:opacity-5 hover:saturate-150 hover:text-custom-color-gold hover:text-xl disabled:w-3/12 disabled:text-[color:var(--some-color)] disabled:text-[1em] md:inset-x-1/4 md:inset-y-auto custom-screen:min-w-full custom-screen:-mr-6 supports-grid:grid supports-grid:col-span-1;
   animation-delay: 200ms;
 }
 
@@ -161,7 +161,7 @@ Console output
       'hover:text-custom-color-gold',
       'hover:text-xl',
       'disabled:w-3/12',
-      'disabled:text-[var(--some-color)]',
+      'disabled:text-[color:var(--some-color)]',
       'disabled:text-[1em]',
       'md:inset-x-1/4',
       'md:inset-y-auto',
