@@ -9,17 +9,27 @@ import {
 } from '../utils/converterMappingByTailwindTheme';
 import { parseCSSFunctions } from '../utils/parseCSSFunctions';
 import { removeUnnecessarySpaces } from '../utils/removeUnnecessarySpaces';
+import { isCSSVariable } from '../utils/isCSSVariable';
 
 function prepareArbitraryValue(value: string) {
   return normalizeValue(value).replace(/_/g, '\\_').replace(/\s+/g, '_');
 }
+
+type CSSDataType =
+  | 'color'
+  | 'length'
+  | 'number'
+  | 'image'
+  | 'position'
+  | 'family-name';
 
 export function convertDeclarationValue(
   value: string,
   valuesMap: Record<string, string>,
   classPrefix: string,
   fallbackValue = value,
-  fallbackClassPrefix = classPrefix
+  fallbackClassPrefix = classPrefix,
+  cssDataType: CSSDataType | null = null
 ) {
   const normalizedValue = normalizeValue(value);
   const mappedValue = valuesMap[normalizedValue];
@@ -32,8 +42,17 @@ export function convertDeclarationValue(
   }
 
   const arbitraryValue = prepareArbitraryValue(fallbackValue);
+
   if (!arbitraryValue) {
     return [];
+  }
+
+  if (cssDataType && isCSSVariable(arbitraryValue)) {
+    return [
+      `${fallbackClassPrefix}-[${
+        cssDataType ? `${cssDataType}:` : ''
+      }${arbitraryValue}]`,
+    ];
   }
 
   return [`${fallbackClassPrefix}-[${arbitraryValue}]`];
@@ -49,13 +68,16 @@ export function strictConvertDeclarationValue(
 function convertColorDeclarationValue(
   declValue: string,
   valuesMap: Record<string, string>,
-  classPrefix: string
+  classPrefix: string,
+  cssDataType: CSSDataType | null = null
 ) {
   return convertDeclarationValue(
     normalizeColorValue(declValue),
     valuesMap,
     classPrefix,
-    declValue
+    declValue,
+    classPrefix,
+    cssDataType
   );
 }
 
@@ -64,7 +86,8 @@ function convertSizeDeclarationValue(
   valuesMap: Record<string, string>,
   classPrefix: string,
   remInPx: number | null | undefined,
-  supportsNegativeValues = false
+  supportsNegativeValues = false,
+  cssDataType: CSSDataType | null = null
 ) {
   const normalizedValue = normalizeSizeValue(declValue, remInPx);
   const isNegativeValue =
@@ -75,7 +98,8 @@ function convertSizeDeclarationValue(
     valuesMap,
     isNegativeValue ? `-${classPrefix}` : classPrefix,
     declValue,
-    classPrefix
+    classPrefix,
+    cssDataType
   );
 }
 
@@ -95,7 +119,9 @@ function convertBorderDeclarationValue(
         width,
         config.mapping.borderWidth,
         classPrefix,
-        config.remInPx
+        config.remInPx,
+        false,
+        'length'
       )
     );
   }
@@ -111,7 +137,8 @@ function convertBorderDeclarationValue(
       convertColorDeclarationValue(
         color,
         config.mapping.borderColor,
-        classPrefix
+        classPrefix,
+        'color'
       )
     );
   }
@@ -179,7 +206,8 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclarationValue(
       declaration.value,
       config.mapping.accentColor,
-      'accent'
+      'accent',
+      'color'
     ),
 
   'align-content': declaration =>
@@ -288,14 +316,18 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclarationValue(
       declaration.value,
       config.mapping.backgroundColor,
-      'bg'
+      'bg',
+      'color'
     ),
 
   'background-image': (declaration, config) =>
     convertDeclarationValue(
       declaration.value,
       config.mapping.backgroundImage,
-      'bg'
+      'bg',
+      declaration.value,
+      'bg',
+      'image'
     ),
 
   'background-origin': declaration =>
@@ -308,7 +340,10 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertDeclarationValue(
       declaration.value,
       config.mapping.backgroundPosition,
-      'bg'
+      'bg',
+      declaration.value,
+      'bg',
+      'position'
     ),
 
   'background-repeat': declaration =>
@@ -322,7 +357,9 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       declaration.value,
       config.mapping.backgroundSize,
       'bg',
-      config.remInPx
+      config.remInPx,
+      false,
+      'length'
     ),
 
   border: (declaration, config) =>
@@ -335,7 +372,8 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclarationValue(
       declaration.value,
       config.mapping.borderColor,
-      'border-b'
+      'border-b',
+      'color'
     ),
 
   'border-bottom-left-radius': (declaration, config) =>
@@ -362,7 +400,9 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       declaration.value,
       config.mapping.borderWidth,
       'border-b',
-      config.remInPx
+      config.remInPx,
+      false,
+      'length'
     ),
 
   'border-collapse': declaration =>
@@ -375,7 +415,8 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclarationValue(
       declaration.value,
       config.mapping.borderColor,
-      'border'
+      'border',
+      'color'
     ),
 
   'border-left': (declaration, config) =>
@@ -385,7 +426,8 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclarationValue(
       declaration.value,
       config.mapping.borderColor,
-      'border-l'
+      'border-l',
+      'color'
     ),
 
   // 'border-left-style': declaration =>
@@ -396,7 +438,9 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       declaration.value,
       config.mapping.borderWidth,
       'border-l',
-      config.remInPx
+      config.remInPx,
+      false,
+      'length'
     ),
 
   'border-radius': (declaration, config) =>
@@ -414,7 +458,8 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclarationValue(
       declaration.value,
       config.mapping.borderColor,
-      'border-r'
+      'border-r',
+      'color'
     ),
 
   // 'border-right-style': declaration =>
@@ -425,7 +470,9 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       declaration.value,
       config.mapping.borderWidth,
       'border-r',
-      config.remInPx
+      config.remInPx,
+      false,
+      'length'
     ),
 
   'border-spacing': (declaration, config) =>
@@ -449,7 +496,8 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclarationValue(
       declaration.value,
       config.mapping.borderColor,
-      'border-t'
+      'border-t',
+      'color'
     ),
 
   'border-top-left-radius': (declaration, config) =>
@@ -476,7 +524,9 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       declaration.value,
       config.mapping.borderWidth,
       'border-t',
-      config.remInPx
+      config.remInPx,
+      false,
+      'length'
     ),
 
   'border-width': (declaration, config) =>
@@ -484,7 +534,9 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       declaration.value,
       config.mapping.borderWidth,
       'border',
-      config.remInPx
+      config.remInPx,
+      false,
+      'length'
     ),
 
   bottom: (declaration, config) =>
@@ -537,7 +589,8 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclarationValue(
       declaration.value,
       config.mapping.caretColor,
-      'caret'
+      'caret',
+      'color'
     ),
 
   clear: declaration =>
@@ -550,7 +603,8 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclarationValue(
       declaration.value,
       config.mapping.textColor,
-      'text'
+      'text',
+      'color'
     ),
 
   'column-gap': (declaration, config) =>
@@ -683,7 +737,9 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       declaration.value,
       config.mapping.fontSize,
       'text',
-      config.remInPx
+      config.remInPx,
+      false,
+      'length'
     ),
 
   'font-smoothing': declaration =>
@@ -708,7 +764,10 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertDeclarationValue(
       declaration.value,
       config.mapping.fontWeight,
-      'font'
+      'font',
+      declaration.value,
+      'font',
+      'number'
     ),
 
   gap: (declaration, config) =>
@@ -1020,7 +1079,8 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclarationValue(
       declaration.value,
       config.mapping.outlineColor,
-      'outline'
+      'outline',
+      'color'
     ),
 
   'outline-offset': (declaration, config) =>
@@ -1029,7 +1089,8 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       config.mapping.outlineOffset,
       'outline-offset',
       config.remInPx,
-      true
+      true,
+      'length'
     ),
 
   'outline-style': declaration =>
@@ -1043,7 +1104,9 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       declaration.value,
       config.mapping.outlineWidth,
       'outline',
-      config.remInPx
+      config.remInPx,
+      false,
+      'length'
     ),
 
   overflow: declaration =>
@@ -1344,7 +1407,8 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclarationValue(
       declaration.value,
       config.mapping.stroke,
-      'stroke'
+      'stroke',
+      'color'
     ),
 
   'stroke-width': (declaration, config) =>
@@ -1352,7 +1416,9 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       declaration.value,
       config.mapping.strokeWidth,
       'stroke',
-      config.remInPx
+      config.remInPx,
+      false,
+      'length'
     ),
 
   'table-layout': declaration =>
@@ -1381,7 +1447,8 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     convertColorDeclarationValue(
       declaration.value,
       config.mapping.textDecorationColor,
-      'decoration'
+      'decoration',
+      'color'
     ),
 
   'text-decoration-line': declaration =>
@@ -1389,17 +1456,21 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       declaration.value,
       UTILITIES_MAPPING['text-decoration-line']
     ),
+
   'text-decoration-style': declaration =>
     strictConvertDeclarationValue(
       declaration.value,
       UTILITIES_MAPPING['text-decoration-style']
     ),
+
   'text-decoration-thickness': (declaration, config) =>
     convertSizeDeclarationValue(
       declaration.value,
       config.mapping.textDecorationThickness,
       'decoration',
-      config.remInPx
+      config.remInPx,
+      false,
+      'length'
     ),
 
   'text-indent': (declaration, config) =>
@@ -1428,7 +1499,9 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
       declaration.value,
       config.mapping.textUnderlineOffset,
       'underline-offset',
-      config.remInPx
+      config.remInPx,
+      false,
+      'length'
     ),
 
   top: (declaration, config) =>
