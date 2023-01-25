@@ -10,7 +10,8 @@ exports[`TailwindConverter converting css string returns tailwind nodes 1`] = `
 
 .foo {
   @apply accent-custom-color-gold content-center items-start animate-spin appearance-none aspect-video content-center content-end after:content-['*'] after:select-text after:align-text-top after:origin-top hidden:delay-150 hidden:duration-200 hidden:transition hidden:ease-in;
-  --some-variable: 12px; /* custom-color-gold */
+  --some-size: 12px;
+  --some-color: #333333; /* custom-color-gold */
   align-self: self-end; /* unconvertable value */ /* duplicate */
 }
 
@@ -33,7 +34,7 @@ exports[`TailwindConverter converting css string returns tailwind nodes 1`] = `
   }
 
 .foo .bar {
-    @apply break-after-avoid break-before-left break-inside-auto translate-x-[10px_0.625rem] skew-x-2 -rotate-45 pl-[12%] pr-[100vw] pt-64 pb-1 px-6 py-8 -scale-75;
+    @apply translate-x-[10px_0.625rem] skew-x-2 -rotate-45 pl-[12%] pr-[100vw] pt-64 pb-1 px-6 py-8 -scale-75;
     transition: transform 200ms cubic-bezier(0, 0, 0.2, 1), color,
       background-color, border-color, text-decoration-color, fill,
       stroke 200ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -43,6 +44,11 @@ exports[`TailwindConverter converting css string returns tailwind nodes 1`] = `
 
   @apply place-content-around place-items-center place-self-stretch pointer-events-auto relative resize-x -right-32 motion-safe:custom-screen:supports-flex:order-[-123] motion-safe:custom-screen:supports-flex:tracking-[0.25rem] motion-safe:custom-screen:supports-flex:leading-snug motion-safe:custom-screen:supports-flex:list-inside motion-safe:custom-screen:supports-flex:list-decimal motion-safe:custom-screen:supports-flex:mb-[-0.875rem] motion-safe:custom-screen:supports-flex:max-h-full motion-safe:custom-screen:supports-flex:max-w-screen-2xl motion-safe:custom-screen:supports-flex:min-h-fit motion-safe:custom-screen:supports-flex:min-w-min motion-safe:custom-screen:supports-flex:mix-blend-color-dodge motion-safe:custom-screen:supports-flex:object-fill motion-safe:custom-screen:supports-flex:object-right-top motion-safe:custom-screen:supports-flex:ml-[2em] motion-safe:custom-screen:supports-flex:mr-[1vh] motion-safe:custom-screen:supports-flex:mt-3 motion-safe:custom-screen:supports-flex:mt-[3vw] motion-safe:custom-screen:supports-flex:-mb-2.5 motion-safe:custom-screen:supports-flex:mx-6 motion-safe:custom-screen:supports-flex:left-2 supports-[scroll-snap-align:end]:snap-end supports-[scroll-snap-align:end]:snap-always supports-[scroll-snap-align:end]:line-through supports-[scroll-snap-align:end]:scroll-mt-[12%] supports-[scroll-snap-align:end]:scroll-pl-3.5 supports-[scroll-snap-align:end]:scroll-pr-[10vw] supports-[scroll-snap-align:end]:scroll-pt-[10em] supports-[scroll-snap-align:end]:scroll-pb-5 supports-[scroll-snap-align:end]:scroll-p-[100px];
   }
+
+.foo .baz > .foo-bar {
+
+  @apply text-left text-[var(--some-size)] text-[var(--some-color)] active:focus:break-after-avoid active:focus:break-before-left active:focus:break-inside-auto xl:isolate xl:justify-center xl:active:text-sky-800 xl:active:focus:justify-items-start xl:active:focus:justify-self-end motion-safe:custom-screen:supports-flex:opacity-20 motion-safe:custom-screen:supports-flex:-order-last motion-safe:custom-screen:supports-flex:outline-lime-600 motion-safe:custom-screen:supports-flex:outline-offset-2 motion-safe:custom-screen:supports-flex:outline-dotted motion-safe:custom-screen:supports-flex:outline-2 motion-safe:custom-screen:supports-flex:overflow-hidden motion-safe:custom-screen:supports-flex:break-words motion-safe:custom-screen:supports-flex:overflow-x-scroll motion-safe:custom-screen:supports-flex:overflow-y-visible motion-safe:custom-screen:supports-flex:overscroll-contain motion-safe:custom-screen:supports-flex:overscroll-x-auto motion-safe:custom-screen:supports-flex:overscroll-y-none;
+    }
 
 .foo div > [data-zoo] {
 
@@ -59,7 +65,7 @@ exports[`TailwindConverter converting css string returns tailwind nodes 1`] = `
       background-attachment: initial;
     }
 
-    .loving .bar > .testing { @apply bg-[url('/some-path/to/large\\\\_image.jpg')] border-custom-color-gold border-b-custom-color-200 border-b-[var(--some-variable)] border-neutral-600 border-t-custom-color-400 rounded-br-sm rounded-bl border-b-[2em] border-b-[#ff0000] border-4 border-solid border-dashed border-separate; /* custom-color-gold */ /* custom-color-200 */ /* neutral-600 */
+    .loving .bar > .testing { @apply bg-[url('/some-path/to/large\\\\_image.jpg')] border-custom-color-gold border-b-custom-color-200 border-b-[var(--some-size)] border-neutral-600 border-t-custom-color-400 rounded-br-sm rounded-bl border-b-[2em] border-b-[#ff0000] border-4 border-solid border-dashed border-separate; /* custom-color-gold */ /* custom-color-200 */ /* neutral-600 */
     }
   }
 
@@ -87,7 +93,7 @@ exports[`TailwindConverter converting css string returns tailwind nodes 1`] = `
 
     .foo .baz > .foo-bar {
 
-    @apply gap-8 row-span-full row-end-2 gap-y-6 row-start-auto grid-cols-2 grid-rows-5 h-[$some-invalid] isolate justify-center justify-items-start justify-self-end;
+    @apply gap-8 row-span-full row-end-2 gap-y-6 row-start-auto grid-cols-2 grid-rows-5 h-[$some-invalid] active:text-[red];
     }
 }
 
@@ -97,7 +103,6 @@ exports[`TailwindConverter converting css string returns tailwind nodes 1`] = `
       @media (max-width: 1024px) {
 
           .foo .baz > .foo-bar {
-            @apply opacity-20 -order-last outline-lime-600 outline-offset-2 outline-dotted outline-2 overflow-hidden break-words overflow-x-scroll overflow-y-visible overscroll-contain overscroll-x-auto overscroll-y-none;
             outline: 4px dashed rgb(254, 240, 138); /* yellow-200 */ /* lime-600 */
           }
       }

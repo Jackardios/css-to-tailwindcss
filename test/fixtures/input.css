@@ -1,7 +1,8 @@
 @charset "UTF-8";
 
 .foo {
-  --some-variable: 12px;
+  --some-size: 12px;
+  --some-color: #333333;
   accent-color: hsl(41, 28.3%, 79.8%); /* custom-color-gold */
   align-content: center;
   align-items: flex-start;
@@ -61,9 +62,6 @@
     padding-left: 12%;
     padding-right: 100vw;
     padding-top: 256px;
-    page-break-after: avoid;
-    page-break-before: left;
-    page-break-inside: auto;
     transform: translate(10px 0.625rem) skew(2deg) scale(-0.75, -0.75)
       rotate(-45deg);
     transition: transform 200ms cubic-bezier(0, 0, 0.2, 1), color,
@@ -79,6 +77,18 @@
     position: relative;
     resize: horizontal;
     right: -128px;
+
+    & > .foo-bar {
+      text-align: left;
+      font-size: var(--some-size);
+      color: var(--some-color);
+
+      &:active:focus {
+        page-break-after: avoid;
+        page-break-before: left;
+        page-break-inside: auto;
+      }
+    }
   }
 
   div > [data-zoo] {
@@ -119,7 +129,7 @@
       border-bottom-color: #ff0000;
       border-bottom-left-radius: 0.25rem;
       border-bottom-right-radius: 2px;
-      border-bottom-width: var(--some-variable);
+      border-bottom-width: var(--some-size);
       border-collapse: separate;
       border-color: hsla(0, 0%, 32%, 1); /* neutral-600 */
       border-top-color: some-invalid-color;
@@ -190,6 +200,20 @@
     font-variant-numeric: ordinal;
     font-weight: 600;
   }
+
+  .foo .baz > .foo-bar {
+    isolation: isolate;
+    justify-content: center;
+
+    &:active {
+      color: rgba(7, 89, 133, 1);
+
+      &:focus {
+        justify-items: flex-start;
+        justify-self: end;
+      }
+    }
+  }
 }
 
 @media screen and (min-width: 1280px) and (max-width: 1440px) {
@@ -213,10 +237,10 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
       grid-template-rows: repeat(5, minmax(0, 1fr));
       height: $some-invalid;
-      isolation: isolate;
-      justify-content: center;
-      justify-items: flex-start;
-      justify-self: end;
+
+      &:active {
+        color: red;
+      }
     }
   }
 }
