@@ -178,7 +178,7 @@ export class TailwindConverter {
     const parsedSelectors = parse(rawSelector);
 
     if (parsedSelectors.length !== 1) {
-      return { baseSelector: '', classPrefix: '' };
+      return { baseSelector: rawSelector, classPrefix: '' };
     }
 
     const parsedSelector = parsedSelectors[0];
