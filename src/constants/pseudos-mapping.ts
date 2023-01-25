@@ -28,7 +28,6 @@ export const PSEUDOS_MAPPING = {
   invalid: 'invalid',
   'in-range': 'in-range',
   'out-of-range': 'out-of-range',
-  'placeholder-shown': 'placeholder-shown',
   autofill: 'autofill',
   'read-only': 'read-only',
   before: 'before',
@@ -39,5 +38,4 @@ export const PSEUDOS_MAPPING = {
   selection: 'selection',
   'file-selector-button': 'file',
   backdrop: 'backdrop',
-  placeholder: 'placeholder',
 };
