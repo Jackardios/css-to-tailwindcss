@@ -13,14 +13,9 @@ import type { ConverterMapping } from './types/ConverterMapping';
 import postcss from 'postcss';
 import postcssSafeParser from 'postcss-safe-parser';
 import resolveConfig from 'tailwindcss/resolveConfig';
-import { parse, stringify } from 'css-what';
+import { parse, stringify, isTraversal } from 'css-what';
 
-import {
-  isResolvedTailwindNode,
-  isUnresolvedTailwindNode,
-  TailwindNode,
-  TailwindNodesManager,
-} from './TailwindNodesManager';
+import { TailwindNode, TailwindNodesManager } from './TailwindNodesManager';
 import { isAtRuleNode } from './utils/isAtRuleNode';
 import {
   converterMappingByTailwindTheme,
@@ -34,6 +29,7 @@ import { isChildNode } from './utils/isChildNode';
 import { MEDIA_PARAMS_MAPPING } from './constants/media-params-mapping';
 import { removeUnnecessarySpaces } from './utils/removeUnnecessarySpaces';
 import { reduceTailwindClasses } from './utils/reduceTailwindClasses';
+import { PSEUDOS_MAPPING } from './constants/pseudos-mapping';
 
 export interface TailwindConverterConfig {
   remInPx?: number | null;
@@ -147,79 +143,75 @@ export class TailwindConverter {
     );
   }
 
-  protected makeTailwindNode(rule: Rule, tailwindClasses: string[]) {
-    const parsedSelector = parse(rule.selector);
-    let tailwindNode: TailwindNode = { rule, tailwindClasses };
+  protected makeTailwindNode(
+    rule: Rule,
+    tailwindClasses: string[]
+  ): TailwindNode {
+    let { baseSelector, classPrefix } = this.parseSelector(rule.selector);
 
-    if (parsedSelector.length === 1) {
-      const firstParsedSelector = parsedSelector[0];
-      const baseSelectors: Array<Selector> = [];
-      const converted: Array<string> = [];
+    const containerClassPrefix = this.convertContainerToClassPrefix(
+      rule.parent
+    );
 
-      firstParsedSelector?.forEach(item => {
-        const convertedSelector = this.convertSelector(item);
-
-        if (convertedSelector) {
-          converted.push(convertedSelector);
-        } else if (item.type === 'tag' || item.type === 'attribute') {
-          baseSelectors.push(item);
-        }
-      });
-
-      const isComplexSelector =
-        baseSelectors.length + converted.length !== firstParsedSelector.length;
-
-      if (!isComplexSelector) {
-        const classesPrefix = converted.join('');
-
-        tailwindNode = {
-          key: stringify([baseSelectors]),
-          fallbackRule: rule,
-          classesPrefixWhenFound: classesPrefix,
-          tailwindClasses,
-        };
-      }
+    if (containerClassPrefix) {
+      return {
+        key: baseSelector,
+        fallbackRule: rule,
+        classesPrefixWhenFound: containerClassPrefix + classPrefix,
+        tailwindClasses,
+      };
     }
-
-    const classPrefix = this.convertContainerToClassPrefix(rule.parent);
 
     if (classPrefix) {
-      tailwindNode = isResolvedTailwindNode(tailwindNode)
-        ? {
-            key: tailwindNode.rule.selector,
-            fallbackRule: rule,
-            classesPrefixWhenFound: classPrefix,
-            tailwindClasses,
-          }
-        : {
-            key: tailwindNode.key,
-            fallbackRule: rule,
-            classesPrefixWhenFound:
-              classPrefix + tailwindNode.classesPrefixWhenFound,
-            tailwindClasses,
-          };
-    } else if (isUnresolvedTailwindNode(tailwindNode)) {
-      tailwindNode.key = TailwindNodesManager.convertRuleToKey(
-        rule.clone({ selector: tailwindNode.key })
-      );
+      return {
+        key: TailwindNodesManager.convertRuleToKey(rule, baseSelector),
+        fallbackRule: rule,
+        classesPrefixWhenFound: classPrefix,
+        tailwindClasses,
+      };
     }
 
-    return tailwindNode;
+    return { rule, tailwindClasses };
   }
 
-  protected convertSelector(selector: Selector) {
+  protected parseSelector(rawSelector: string) {
+    const parsedSelectors = parse(rawSelector);
+
+    if (parsedSelectors.length !== 1) {
+      return { baseSelector: '', classPrefix: '' };
+    }
+
+    const parsedSelector = parsedSelectors[0];
+    let baseSelectors: Array<Selector> = [];
+    let classPrefixes: Array<string> = [];
+    parsedSelector?.forEach((selectorItem, index) => {
+      if (isTraversal(selectorItem)) {
+        baseSelectors = parsedSelector.slice(0, index + 1);
+        classPrefixes = [];
+
+        return;
+      }
+
+      const classPrefix = this.convertSelectorToClassPrefix(selectorItem);
+
+      if (classPrefix) {
+        classPrefixes.push(classPrefix);
+      } else {
+        baseSelectors.push(selectorItem);
+      }
+    });
+
+    return {
+      baseSelector: stringify([baseSelectors]),
+      classPrefix: classPrefixes.join(''),
+    };
+  }
+
+  protected convertSelectorToClassPrefix(selector: Selector) {
     if (selector.type === 'pseudo' || selector.type === 'pseudo-element') {
-      return (
-        {
-          'file-selector-button': 'file:',
-          'last-child': 'last:',
-          'only-child': 'only:',
-          'nth-child(odd)': 'odd:',
-          'nth-child(2n+1)': 'odd:',
-          'nth-child(even)': 'even:',
-          'nth-child(2n)': 'even:',
-        }[selector.name] || `${selector.name}:`
-      );
+      const mapped = (PSEUDOS_MAPPING as any)[selector.name];
+
+      return mapped ? `${mapped}:` : null;
     }
 
     if (selector.type === 'attribute') {
@@ -287,7 +279,7 @@ export class TailwindConverter {
         mediaParams.reverse()
       );
       if (!mediaPrefixes) {
-        return;
+        return '';
       }
     }
 
@@ -296,7 +288,7 @@ export class TailwindConverter {
         supportsParams.reverse()
       );
       if (!supportsPrefixes) {
-        return;
+        return '';
       }
     }
 
