@@ -1,5 +1,4 @@
 export const PSEUDOS_MAPPING = {
-  // pseudo elements
   hover: 'hover',
   focus: 'focus',
   'focus-within': 'focus-within',
