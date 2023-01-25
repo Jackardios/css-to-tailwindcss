@@ -87,7 +87,10 @@ export class TailwindNodesManager {
     return Array.from(this.nodesMap.values());
   }
 
-  static convertRuleToKey(rule: Rule) {
+  static convertRuleToKey(
+    rule: Rule,
+    overriddenSelector: string | null = null
+  ) {
     let currentParent = rule.parent;
     let parentKey = '';
 
@@ -100,7 +103,10 @@ export class TailwindNodesManager {
       currentParent = currentParent.parent;
     }
 
-    return parentKey + rule.selector;
+    return (
+      parentKey +
+      (overriddenSelector == null ? rule.selector : overriddenSelector)
+    );
   }
 
   protected static makeSingleAtRuleKey(atRule: AtRule) {
