@@ -8,7 +8,11 @@
 
 > Convert your CSS to TailwindCSS 3.x respecting TailwindCSS configuration
 
-## [🔗 Codesandbox demo](https://codesandbox.io/s/css-to-tailwindcss-demo-yr1ser)
+**[🔗 Codesandbox demo](https://codesandbox.io/s/css-to-tailwindcss-demo-yr1ser)**
+
+**[🔗 VS Code Extension](https://github.com/Jackardios/vscode-css-to-tailwindcss)**
+
+![VSCode demo](.github/demo.gif)
 
 ## Install
 
