@@ -92,7 +92,7 @@
   }
 
   div > [data-zoo] {
-    padding: 0.5rem 1.5em 1px 25%;
+    padding: 0 1.5em 1px 25%;
     border-width: 1px;
     bottom: 100%;
   }
@@ -154,7 +154,7 @@
     border-top-left-radius: 0px;
     border-top-right-radius: 0.25%;
     border-top-width: 100vh;
-    border-width: 8px;
+    border-width: 0px;
     bottom: 100vw;
   }
 }

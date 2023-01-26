@@ -23,12 +23,18 @@ export function normalizeColorValue(colorValue: string) {
   return parsed.isValid() ? parsed.toHex() : colorValue;
 }
 
+export function normalizeZeroSizeValue(value: string) {
+  return value.trim() === '0px' ? '0' : value;
+}
+
 export function normalizeSizeValue(
   sizeValue: string,
   remInPx: number | undefined | null
 ) {
-  return normalizeNumbersInString(
-    remInPx != null ? remValueToPx(sizeValue, remInPx) : sizeValue
+  return normalizeZeroSizeValue(
+    normalizeNumbersInString(
+      remInPx != null ? remValueToPx(sizeValue, remInPx) : sizeValue
+    )
   );
 }
 
