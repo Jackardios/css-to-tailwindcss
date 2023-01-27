@@ -94,15 +94,19 @@ export class TailwindConverter {
       );
     });
 
-    // clean empty rules and at-rules
+    // cleanup
     parsed.root.walkRules(node => {
       if (node.nodes?.length === 0) {
         node.remove();
+      } else {
+        node.cleanRaws();
       }
     });
     parsed.root.walkAtRules(node => {
       if (node.nodes?.length === 0) {
         node.remove();
+      } else {
+        node.cleanRaws();
       }
     });
 
