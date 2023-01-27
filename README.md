@@ -10,9 +10,18 @@
 
 **[🔗 Codesandbox demo](https://codesandbox.io/s/css-to-tailwindcss-demo-yr1ser)**
 
-**[🔗 VS Code Extension](https://github.com/Jackardios/vscode-css-to-tailwindcss)**
+**[🔗 VS Code Extension already available 🎉](https://github.com/Jackardios/vscode-css-to-tailwindcss)**
 
 ![VSCode demo](.github/demo.gif)
+
+## Features:
+
+- supports all (or almost all) the features currently available in TailwindCSS
+- the ability to set your own TailwindCSS configuration
+- colors are matched regardless of the format used
+- rem is converted to px (it is possible to configure the rem size)
+- non-convertible CSS declarations are simply skipped
+- [ambiguities](https://tailwindcss.com/docs/adding-custom-styles#resolving-ambiguities) when using css variables are resolved automatically
 
 ## Install
 
