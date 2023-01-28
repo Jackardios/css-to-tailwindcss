@@ -1,16 +1,16 @@
 import type { AttributeSelector, Selector } from 'css-what';
-import {
+import type { Config } from 'tailwindcss';
+import type { ConverterMapping } from './types/ConverterMapping';
+
+import postcss, {
   AcceptedPlugin,
   AtRule,
   Container,
   Declaration,
-  Document,
   Rule,
+  Root,
+  Document,
 } from 'postcss';
-import type { Config } from 'tailwindcss';
-import type { ConverterMapping } from './types/ConverterMapping';
-
-import postcss from 'postcss';
 import postcssSafeParser from 'postcss-safe-parser';
 import resolveConfig from 'tailwindcss/resolveConfig';
 import { parse, stringify, isTraversal } from 'css-what';
@@ -30,6 +30,7 @@ import { MEDIA_PARAMS_MAPPING } from './constants/media-params-mapping';
 import { removeUnnecessarySpaces } from './utils/removeUnnecessarySpaces';
 import { reduceTailwindClasses } from './utils/reduceTailwindClasses';
 import { PSEUDOS_MAPPING } from './constants/pseudos-mapping';
+import { detectIndent } from './utils/detectIndent';
 
 export interface TailwindConverterConfig {
   remInPx?: number | null;
@@ -94,26 +95,32 @@ export class TailwindConverter {
       );
     });
 
-    // cleanup
-    parsed.root.walkRules(node => {
-      if (node.nodes?.length === 0) {
-        node.remove();
-      } else {
-        node.cleanRaws();
-      }
-    });
-    parsed.root.walkAtRules(node => {
-      if (node.nodes?.length === 0) {
-        node.remove();
-      } else {
-        node.cleanRaws();
-      }
-    });
+    this.cleanRaws(parsed.root);
 
     return {
       nodes,
       convertedRoot: parsed.root,
     };
+  }
+
+  protected cleanRaws(root: Root | Document) {
+    root.raws.indent = detectIndent(root);
+
+    root.walkRules(node => {
+      if (node.nodes?.length === 0) {
+        node.remove();
+      } else {
+        node.cleanRaws(true);
+      }
+    });
+
+    root.walkAtRules(node => {
+      if (node.nodes?.length === 0) {
+        node.remove();
+      } else {
+        node.cleanRaws(true);
+      }
+    });
   }
 
   protected convertRule(rule: Rule): TailwindNode | null {
