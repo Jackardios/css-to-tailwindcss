@@ -1,15 +1,9 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`TailwindConverter converting css part string 1`] = `
-"{
-    @apply text-center text-xs hover:text-base md:font-semibold;
-}"
-`;
-
-exports[`TailwindConverter converting css string returns tailwind nodes 1`] = `
+exports[`TailwindConverter should convert the complex CSS 1`] = `
 "@charset \\"UTF-8\\";
 .foo {
-  @apply accent-custom-color-gold content-center items-start animate-spin appearance-none aspect-video content-center content-end after:content-['*'] after:select-text after:align-text-top after:origin-top hidden:delay-150 hidden:duration-200 hidden:transition hidden:ease-in;
+  @apply accent-custom-color-gold content-center items-start animate-spin appearance-none aspect-video content-center content-end portrait:text-[black] after:content-['*'] after:select-text after:align-text-top after:origin-top hidden:delay-150 hidden:duration-200 hidden:transition hidden:ease-in;
   --some-size: 12px;
   --some-color: #333333;
 
@@ -131,6 +125,19 @@ div > [data-zoo] {
   /* custom-color-100 */
 
   /* custom-color-gold */
+}
+"
+`;
+
+exports[`TailwindConverter should convert the css part string 1`] = `
+"{
+    @apply text-center text-xs hover:text-base md:font-semibold;
+}"
+`;
+
+exports[`TailwindConverter should convert the simple CSS 1`] = `
+".foo {
+    @apply text-center text-xs hover:text-base md:font-semibold;
 }
 "
 `;

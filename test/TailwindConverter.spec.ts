@@ -1,12 +1,28 @@
-import { TailwindConverter } from '../src/TailwindConverter';
+import {
+  TailwindConverter,
+  TailwindConverterConfig,
+} from '../src/TailwindConverter';
 import fs from 'fs';
 import path from 'path';
 
-const inputCSS: string = fs
+const complexCSS: string = fs
   .readFileSync(path.resolve(__dirname, './fixtures/input.css'))
   .toString();
 
-function createTailwindConverter() {
+const simpleCSS = `
+.foo {
+  text-align: center;
+  font-size: 12px;
+  &:hover {
+    font-size: 16px;
+  }
+  @media screen and (min-width: 768px) {
+    font-weight: 600;
+  }
+}
+`;
+
+function createTailwindConverter(config?: Partial<TailwindConverterConfig>) {
   return new TailwindConverter({
     remInPx: 16,
     postCSSPlugins: [require('postcss-nested')],
@@ -34,13 +50,32 @@ function createTailwindConverter() {
         },
       },
     },
+    ...(config || {}),
   });
 }
 
 describe('TailwindConverter', () => {
-  test('converting css string returns tailwind nodes', async () => {
+  it('should convert the simple CSS', async () => {
     const converter = createTailwindConverter();
-    const converted = await converter.convertCSS(inputCSS);
+    const converted = await converter.convertCSS(simpleCSS);
+
+    expect(converted.convertedRoot.toString()).toMatchSnapshot();
+    expect(converted.nodes).toEqual([
+      {
+        rule: expect.objectContaining({ selector: '.foo' }),
+        tailwindClasses: [
+          'text-center',
+          'text-xs',
+          'hover:text-base',
+          'md:font-semibold',
+        ],
+      },
+    ]);
+  });
+
+  it('should convert the complex CSS', async () => {
+    const converter = createTailwindConverter();
+    const converted = await converter.convertCSS(complexCSS);
 
     expect(converted.convertedRoot.toString()).toMatchSnapshot();
     expect(converted.nodes).toEqual([
@@ -354,7 +389,7 @@ describe('TailwindConverter', () => {
     ]);
   });
 
-  test('converting empty string', async () => {
+  it('should return an empty result when converting an empty string', async () => {
     const converter = createTailwindConverter();
     const converted = await converter.convertCSS('');
 
@@ -362,7 +397,7 @@ describe('TailwindConverter', () => {
     expect(converted.nodes).toEqual([]);
   });
 
-  test('converting css part string', async () => {
+  it('should convert the css part string', async () => {
     const converter = createTailwindConverter();
     const converted = await converter.convertCSS(
       '{ text-align: center; font-size: 12px; &:hover { font-size: 16px; } @media screen and (min-width: 768px) { font-weight: 600; } }'
@@ -381,7 +416,7 @@ describe('TailwindConverter', () => {
     ]);
   });
 
-  test('converting invalid css string throws error', async () => {
+  it('should throw an error when converting invalid css string', async () => {
     const converter = createTailwindConverter();
     await expect(
       converter.convertCSS(
