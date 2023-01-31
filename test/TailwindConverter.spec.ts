@@ -55,6 +55,7 @@ describe('TailwindConverter', () => {
           'aspect-video',
           'content-center',
           'content-end',
+          'portrait:text-[black]',
           "after:content-['*']",
           'after:select-text',
           'after:align-text-top',

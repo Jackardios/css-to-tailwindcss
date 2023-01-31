@@ -335,13 +335,15 @@ export class TailwindConverter {
       }
     }
 
-    const mappedScreen = this.config.mapping.screens[screens.join(' and ')];
+    if (screens.length > 0) {
+      const mappedScreen = this.config.mapping.screens[screens.join(' and ')];
 
-    if (!mappedScreen) {
-      return '';
+      if (!mappedScreen) {
+        return '';
+      }
+
+      modifiers.push(mappedScreen);
     }
-
-    modifiers.push(mappedScreen);
 
     const classPrefix = modifiers.join(':');
 

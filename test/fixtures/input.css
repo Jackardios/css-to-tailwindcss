@@ -13,6 +13,10 @@
   align-content: center; /* duplicate */
   align-content: flex-end; /* duplicate with another value */
 
+  @media (orientation: portrait) {
+    color: black;
+  }
+
   &::after {
     content: '*';
     user-select: text;
