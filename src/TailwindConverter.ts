@@ -157,7 +157,7 @@ export class TailwindConverter {
       ) || [];
 
     if (classes.length === 0 && this.config.arbitraryPropertiesIsEnabled) {
-      classes = [
+      return [
         `[${declaration.prop}:${prepareArbitraryValue(declaration.value)}]`,
       ];
     }
