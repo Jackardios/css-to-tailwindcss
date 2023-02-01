@@ -140,10 +140,17 @@ export class TailwindConverter {
     });
 
     if (tailwindClasses.length) {
-      return this.makeTailwindNode(
-        rule,
-        reduceTailwindClasses(tailwindClasses)
-      );
+      tailwindClasses = reduceTailwindClasses(tailwindClasses);
+
+      if (this.config.tailwindConfig.prefix) {
+        tailwindClasses = tailwindClasses.map(className =>
+          className[0] === '[' // is "arbitrary property" class
+            ? className
+            : `${this.config.tailwindConfig.prefix}${className}`
+        );
+      }
+
+      return this.makeTailwindNode(rule, tailwindClasses);
     }
 
     return null;
@@ -162,11 +169,7 @@ export class TailwindConverter {
       ];
     }
 
-    return this.config.tailwindConfig.prefix
-      ? classes.map(
-          className => `${this.config.tailwindConfig.prefix}${className}`
-        )
-      : classes;
+    return classes;
   }
 
   protected makeTailwindNode(

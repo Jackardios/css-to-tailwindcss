@@ -11,7 +11,8 @@ const complexCSS: string = fs
 
 const simpleCSS = `
 .foo {
-  text-align: center;
+  padding-top: 12px;
+  padding-bottom: 12px;
   font-size: 12px;
   animation-delay: 200ms;
 
@@ -71,8 +72,8 @@ describe('TailwindConverter', () => {
       {
         rule: expect.objectContaining({ selector: '.foo' }),
         tailwindClasses: [
-          'text-center',
           'text-xs',
+          'py-3',
           'hover:blur-sm',
           'hover:brightness-50',
           'hover:sepia',
@@ -106,8 +107,8 @@ describe('TailwindConverter', () => {
       {
         rule: expect.objectContaining({ selector: '.foo' }),
         tailwindClasses: [
-          'tw-text-center',
           'tw-text-xs',
+          'tw-py-3',
           'hover_tw-blur-sm',
           'hover_tw-brightness-50',
           'hover_tw-sepia',
@@ -133,9 +134,9 @@ describe('TailwindConverter', () => {
       {
         rule: expect.objectContaining({ selector: '.foo' }),
         tailwindClasses: [
-          'text-center',
           'text-xs',
           '[animation-delay:200ms]',
+          'py-3',
           'hover:blur-sm',
           'hover:brightness-50',
           'hover:sepia',
