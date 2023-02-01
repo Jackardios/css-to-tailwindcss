@@ -16,7 +16,7 @@
 
 ## Features:
 
-- supports all (or almost all) the features currently available in TailwindCSS
+- supports almost all the features (except custom plugins) currently available in TailwindCSS
 - the ability to set your own TailwindCSS configuration
 - colors are matched regardless of the format used
 - rem is converted to px (it is possible to configure the rem size)
@@ -211,11 +211,12 @@ Console output
 
 ### TailwindConverter(options?)
 
-| Option         | Type               | Default | Description                                                             |
-| -------------- | ------------------ | ------- | ----------------------------------------------------------------------- |
-| remInPx        | `number` \| `null` | `null`  | `rem` in `px` unit. Set null if you don't want to convert rem to pixels |
-| tailwindConfig | `Config`           | {}      | Set your tailwind config here                                           |
-| postCSSPlugins | `AcceptedPlugin[]` | []      | Array of acceptable postcss plugins                                     |
+| Option                       | Type               | Default | Description                                                                              |
+| ---------------------------- | ------------------ | ------- | ---------------------------------------------------------------------------------------- |
+| remInPx                      | `number` \| `null` | `null`  | `rem` in `px` unit. Set null if you don't want to convert rem to pixels                  |
+| arbitraryPropertiesIsEnabled | `boolean`          | `false` | defines whether non-convertible properties should be converted as "arbitrary properties" |
+| tailwindConfig               | `Config`           | {}      | Set your tailwind config here                                                            |
+| postCSSPlugins               | `AcceptedPlugin[]` | []      | Array of acceptable postcss plugins                                                      |
 
 [build-img]: https://github.com/jackardios/css-to-tailwindcss/actions/workflows/release.yml/badge.svg
 [build-url]: https://github.com/jackardios/css-to-tailwindcss/actions/workflows/release.yml

@@ -13,9 +13,16 @@ const simpleCSS = `
 .foo {
   text-align: center;
   font-size: 12px;
+  animation-delay: 200ms;
+
   &:hover {
+    filter: blur(4px) brightness(0.5) sepia(100%) contrast(1) hue-rotate(30deg)
+      invert(0) opacity(0.05) saturate(1.5);
+    transform: translateX(12px) translateY(0.5em) translateZ(0.5rem)
+      scaleY(0.725) rotate(124deg);
     font-size: 16px;
   }
+
   @media screen and (min-width: 768px) {
     font-weight: 600;
   }
@@ -66,11 +73,119 @@ describe('TailwindConverter', () => {
         tailwindClasses: [
           'text-center',
           'text-xs',
+          'hover:blur-sm',
+          'hover:brightness-50',
+          'hover:sepia',
+          'hover:contrast-100',
+          'hover:hue-rotate-30',
+          'hover:invert-0',
+          'hover:opacity-5',
+          'hover:saturate-150',
           'hover:text-base',
           'md:font-semibold',
         ],
       },
     ]);
+  });
+
+  it('should consider `prefix`, `separator` and `corePlugins` configurations', async () => {
+    const converter = createTailwindConverter({
+      tailwindConfig: {
+        content: [],
+        prefix: 'tw-',
+        separator: '_',
+        corePlugins: {
+          fontWeight: false,
+        },
+      },
+    });
+    const converted = await converter.convertCSS(simpleCSS);
+
+    expect(converted.convertedRoot.toString()).toMatchSnapshot();
+    expect(converted.nodes).toEqual([
+      {
+        rule: expect.objectContaining({ selector: '.foo' }),
+        tailwindClasses: [
+          'tw-text-center',
+          'tw-text-xs',
+          'hover_tw-blur-sm',
+          'hover_tw-brightness-50',
+          'hover_tw-sepia',
+          'hover_tw-contrast-100',
+          'hover_tw-hue-rotate-30',
+          'hover_tw-invert-0',
+          'hover_tw-opacity-5',
+          'hover_tw-saturate-150',
+          'hover_tw-text-base',
+        ],
+      },
+    ]);
+  });
+
+  it('should convert unconvertible declarations if `arbitraryPropertiesIsEnabled` config is enabled', async () => {
+    const converter = createTailwindConverter({
+      arbitraryPropertiesIsEnabled: true,
+    });
+    const converted = await converter.convertCSS(simpleCSS);
+
+    expect(converted.convertedRoot.toString()).toMatchSnapshot();
+    expect(converted.nodes).toEqual([
+      {
+        rule: expect.objectContaining({ selector: '.foo' }),
+        tailwindClasses: [
+          'text-center',
+          'text-xs',
+          '[animation-delay:200ms]',
+          'hover:blur-sm',
+          'hover:brightness-50',
+          'hover:sepia',
+          'hover:contrast-100',
+          'hover:hue-rotate-30',
+          'hover:invert-0',
+          'hover:opacity-5',
+          'hover:saturate-150',
+          'hover:[transform:translateX(12px)_translateY(0.5em)_translateZ(0.5rem)_scaleY(0.725)_rotate(124deg)]',
+          'hover:text-base',
+          'md:font-semibold',
+        ],
+      },
+    ]);
+  });
+
+  it('should return an empty result when converting an empty string', async () => {
+    const converter = createTailwindConverter();
+    const converted = await converter.convertCSS('');
+
+    expect(converted.convertedRoot.toString()).toEqual('');
+    expect(converted.nodes).toEqual([]);
+  });
+
+  it('should convert the css part string', async () => {
+    const converter = createTailwindConverter();
+    const converted = await converter.convertCSS(
+      '{ text-align: center; font-size: 12px; &:hover { font-size: 16px; } @media screen and (min-width: 768px) { font-weight: 600; } }'
+    );
+    expect(converted.convertedRoot.toString()).toMatchSnapshot();
+    expect(converted.nodes).toEqual([
+      expect.objectContaining({
+        rule: expect.objectContaining({ selector: '' }),
+        tailwindClasses: [
+          'text-center',
+          'text-xs',
+          'hover:text-base',
+          'md:font-semibold',
+        ],
+      }),
+    ]);
+  });
+
+  it('should throw an error when converting invalid css string', async () => {
+    const converter = createTailwindConverter();
+    await expect(
+      converter.convertCSS(
+        'some invalid css string... .some-class { display: block; } ...'
+      )
+    ).rejects.toThrow(Error);
   });
 
   it('should convert the complex CSS', async () => {
@@ -387,41 +502,5 @@ describe('TailwindConverter', () => {
         ],
       },
     ]);
-  });
-
-  it('should return an empty result when converting an empty string', async () => {
-    const converter = createTailwindConverter();
-    const converted = await converter.convertCSS('');
-
-    expect(converted.convertedRoot.toString()).toEqual('');
-    expect(converted.nodes).toEqual([]);
-  });
-
-  it('should convert the css part string', async () => {
-    const converter = createTailwindConverter();
-    const converted = await converter.convertCSS(
-      '{ text-align: center; font-size: 12px; &:hover { font-size: 16px; } @media screen and (min-width: 768px) { font-weight: 600; } }'
-    );
-    expect(converted.convertedRoot.toString()).toMatchSnapshot();
-    expect(converted.nodes).toEqual([
-      expect.objectContaining({
-        rule: expect.objectContaining({ selector: '' }),
-        tailwindClasses: [
-          'text-center',
-          'text-xs',
-          'hover:text-base',
-          'md:font-semibold',
-        ],
-      }),
-    ]);
-  });
-
-  it('should throw an error when converting invalid css string', async () => {
-    const converter = createTailwindConverter();
-    await expect(
-      converter.convertCSS(
-        'some invalid css string... .some-class { display: block; } ...'
-      )
-    ).rejects.toThrow(Error);
   });
 });
