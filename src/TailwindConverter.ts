@@ -12,7 +12,6 @@ import postcss, {
   Document,
 } from 'postcss';
 import postcssSafeParser from 'postcss-safe-parser';
-import resolveConfig from 'tailwindcss/resolveConfig';
 import { parse, stringify, isTraversal } from 'css-what';
 
 import { TailwindNode, TailwindNodesManager } from './TailwindNodesManager';
@@ -31,15 +30,17 @@ import { removeUnnecessarySpaces } from './utils/removeUnnecessarySpaces';
 import { reduceTailwindClasses } from './utils/reduceTailwindClasses';
 import { PSEUDOS_MAPPING } from './constants/pseudos-mapping';
 import { detectIndent } from './utils/detectIndent';
+import { resolveConfig, ResolvedTailwindConfig } from './utils/resolveConfig';
 
 export interface TailwindConverterConfig {
   remInPx?: number | null;
-  tailwindConfig: Config;
+  tailwindConfig?: Config;
   postCSSPlugins: AcceptedPlugin[];
 }
 
 export interface ResolvedTailwindConverterConfig
   extends TailwindConverterConfig {
+  tailwindConfig: ResolvedTailwindConfig;
   mapping: ConverterMapping;
 }
 
@@ -58,7 +59,7 @@ export class TailwindConverter {
     ...converterConfig
   }: Partial<TailwindConverterConfig> = {}) {
     const resolvedTailwindConfig = resolveConfig(
-      tailwindConfig || ({} as Config)
+      tailwindConfig || ({ content: [] } as Config)
     );
 
     this.config = {
@@ -146,12 +147,17 @@ export class TailwindConverter {
   }
 
   protected convertDeclarationToClasses(declaration: Declaration) {
-    return (
+    const classes =
       TAILWIND_DECLARATION_CONVERTERS[declaration.prop]?.(
         declaration,
         this.config
-      ) || []
-    );
+      ) || [];
+
+    return this.config.tailwindConfig.prefix
+      ? classes.map(
+          className => `${this.config.tailwindConfig.prefix}${className}`
+        )
+      : classes;
   }
 
   protected makeTailwindNode(
@@ -222,7 +228,7 @@ export class TailwindConverter {
     if (selector.type === 'pseudo' || selector.type === 'pseudo-element') {
       const mapped = (PSEUDOS_MAPPING as any)[selector.name];
 
-      return mapped ? `${mapped}:` : null;
+      return mapped ? `${mapped}${this.config.tailwindConfig.separator}` : null;
     }
 
     if (selector.type === 'attribute') {
@@ -234,7 +240,7 @@ export class TailwindConverter {
           return null;
         }
 
-        return `${mapped}:`;
+        return `${mapped}${this.config.tailwindConfig.separator}`;
       }
 
       if (selector.name.startsWith('data-')) {
@@ -245,7 +251,7 @@ export class TailwindConverter {
           return null;
         }
 
-        return `${mapped}:`;
+        return `${mapped}${this.config.tailwindConfig.separator}`;
       }
     }
 
@@ -345,9 +351,11 @@ export class TailwindConverter {
       modifiers.push(mappedScreen);
     }
 
-    const classPrefix = modifiers.join(':');
+    const classPrefix = modifiers.join(this.config.tailwindConfig.separator);
 
-    return classPrefix ? classPrefix + ':' : '';
+    return classPrefix
+      ? classPrefix + this.config.tailwindConfig.separator
+      : '';
   }
 
   protected convertSupportsParamsToClassPrefix(supportParams: string[]) {
@@ -360,6 +368,8 @@ export class TailwindConverter {
       'supports'
     );
 
-    return classPrefix ? classPrefix + ':' : '';
+    return classPrefix
+      ? classPrefix + this.config.tailwindConfig.separator
+      : '';
   }
 }
