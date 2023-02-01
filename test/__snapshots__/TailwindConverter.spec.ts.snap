@@ -2,12 +2,17 @@
 
 exports[`TailwindConverter should consider \`prefix\`, \`separator\` and \`corePlugins\` configurations 1`] = `
 ".foo {
-    @apply tw-text-center tw-text-xs hover_tw-blur-sm hover_tw-brightness-50 hover_tw-sepia hover_tw-contrast-100 hover_tw-hue-rotate-30 hover_tw-invert-0 hover_tw-opacity-5 hover_tw-saturate-150 hover_tw-text-base;
+  @apply tw-text-center tw-text-xs hover_tw-blur-sm hover_tw-brightness-50 hover_tw-sepia hover_tw-contrast-100 hover_tw-hue-rotate-30 hover_tw-invert-0 hover_tw-opacity-5 hover_tw-saturate-150 hover_tw-text-base;
+  animation-delay: 200ms;
+}
+.foo:hover {
+  transform: translateX(12px) translateY(0.5em) translateZ(0.5rem)
+      scaleY(0.725) rotate(124deg);
 }
 @media screen and (min-width: 768px) {
-    .foo {
-        font-weight: 600
-    }
+  .foo {
+    font-weight: 600
+  }
 }
 "
 `;
@@ -149,7 +154,19 @@ exports[`TailwindConverter should convert the css part string 1`] = `
 
 exports[`TailwindConverter should convert the simple CSS 1`] = `
 ".foo {
-    @apply text-center text-xs hover:blur-sm hover:brightness-50 hover:sepia hover:contrast-100 hover:hue-rotate-30 hover:invert-0 hover:opacity-5 hover:saturate-150 hover:text-base md:font-semibold;
+  @apply text-center text-xs hover:blur-sm hover:brightness-50 hover:sepia hover:contrast-100 hover:hue-rotate-30 hover:invert-0 hover:opacity-5 hover:saturate-150 hover:text-base md:font-semibold;
+  animation-delay: 200ms;
+}
+.foo:hover {
+  transform: translateX(12px) translateY(0.5em) translateZ(0.5rem)
+      scaleY(0.725) rotate(124deg);
+}
+"
+`;
+
+exports[`TailwindConverter should convert unconvertible declarations if \`arbitraryPropertiesIsEnabled\` config is enabled 1`] = `
+".foo {
+    @apply text-center text-xs [animation-delay:200ms] hover:blur-sm hover:brightness-50 hover:sepia hover:contrast-100 hover:hue-rotate-30 hover:invert-0 hover:opacity-5 hover:saturate-150 hover:[transform:translateX(12px)_translateY(0.5em)_translateZ(0.5rem)_scaleY(0.725)_rotate(124deg)] hover:text-base md:font-semibold;
 }
 "
 `;

@@ -22,6 +22,7 @@ import {
 } from './utils/converterMappingByTailwindTheme';
 import {
   convertDeclarationValue,
+  prepareArbitraryValue,
   TAILWIND_DECLARATION_CONVERTERS,
 } from './constants/converters';
 import { isChildNode } from './utils/isChildNode';
@@ -36,6 +37,7 @@ export interface TailwindConverterConfig {
   remInPx?: number | null;
   tailwindConfig?: Config;
   postCSSPlugins: AcceptedPlugin[];
+  arbitraryPropertiesIsEnabled: boolean;
 }
 
 export interface ResolvedTailwindConverterConfig
@@ -49,6 +51,7 @@ export const DEFAULT_CONVERTER_CONFIG: Omit<
   'tailwindConfig'
 > = {
   postCSSPlugins: [],
+  arbitraryPropertiesIsEnabled: false,
 };
 
 export class TailwindConverter {
@@ -147,11 +150,17 @@ export class TailwindConverter {
   }
 
   protected convertDeclarationToClasses(declaration: Declaration) {
-    const classes =
+    let classes =
       TAILWIND_DECLARATION_CONVERTERS[declaration.prop]?.(
         declaration,
         this.config
       ) || [];
+
+    if (classes.length === 0 && this.config.arbitraryPropertiesIsEnabled) {
+      classes = [
+        `[${declaration.prop}:${prepareArbitraryValue(declaration.value)}]`,
+      ];
+    }
 
     return this.config.tailwindConfig.prefix
       ? classes.map(

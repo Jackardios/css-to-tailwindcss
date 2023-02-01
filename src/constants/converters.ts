@@ -11,7 +11,7 @@ import { parseCSSFunctions } from '../utils/parseCSSFunctions';
 import { removeUnnecessarySpaces } from '../utils/removeUnnecessarySpaces';
 import { isCSSVariable } from '../utils/isCSSVariable';
 
-function prepareArbitraryValue(value: string) {
+export function prepareArbitraryValue(value: string) {
   return normalizeValue(value).replace(/_/g, '\\_').replace(/\s+/g, '_');
 }
 
