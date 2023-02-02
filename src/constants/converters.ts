@@ -113,7 +113,10 @@ function convertBorderDeclarationValue(
 
   let classes: string[] = [];
 
-  if (width && config.tailwindConfig.corePlugins.borderWidth) {
+  if (width) {
+    if (!config.tailwindConfig.corePlugins.borderWidth) {
+      return [];
+    }
     classes = classes.concat(
       convertSizeDeclarationValue(
         width,
@@ -126,13 +129,19 @@ function convertBorderDeclarationValue(
     );
   }
 
-  if (style && config.tailwindConfig.corePlugins.borderStyle) {
+  if (style) {
+    if (!config.tailwindConfig.corePlugins.borderStyle) {
+      return [];
+    }
     classes = classes.concat(
       strictConvertDeclarationValue(style, UTILITIES_MAPPING['border-style'])
     );
   }
 
-  if (color && config.tailwindConfig.corePlugins.borderColor) {
+  if (color) {
+    if (!config.tailwindConfig.corePlugins.borderColor) {
+      return [];
+    }
     classes = classes.concat(
       convertColorDeclarationValue(
         color,
