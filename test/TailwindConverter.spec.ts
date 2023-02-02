@@ -15,6 +15,8 @@ const simpleCSS = `
   padding-bottom: 12px;
   font-size: 12px;
   animation-delay: 200ms;
+  border-right: 2px dashed;
+  border: 4px solid transparent;
 
   &:hover {
     filter: blur(4px) brightness(0.5) sepia(100%) contrast(1) hue-rotate(30deg)
@@ -74,6 +76,11 @@ describe('TailwindConverter', () => {
         tailwindClasses: [
           'text-xs',
           'py-3',
+          'border-r-2',
+          'border-dashed',
+          'border-4',
+          'border-solid',
+          'border-transparent',
           'hover:blur-sm',
           'hover:brightness-50',
           'hover:sepia',
@@ -97,6 +104,7 @@ describe('TailwindConverter', () => {
         separator: '_',
         corePlugins: {
           fontWeight: false,
+          borderColor: false,
         },
       },
     });
@@ -109,6 +117,8 @@ describe('TailwindConverter', () => {
         tailwindClasses: [
           'tw-text-xs',
           'tw-py-3',
+          'tw-border-r-2',
+          'tw-border-dashed',
           'hover_tw-blur-sm',
           'hover_tw-brightness-50',
           'hover_tw-sepia',
@@ -126,6 +136,12 @@ describe('TailwindConverter', () => {
   it('should convert unconvertible declarations if `arbitraryPropertiesIsEnabled` config is enabled', async () => {
     const converter = createTailwindConverter({
       arbitraryPropertiesIsEnabled: true,
+      tailwindConfig: {
+        content: [],
+        corePlugins: {
+          borderColor: false,
+        },
+      },
     });
     const converted = await converter.convertCSS(simpleCSS);
 
@@ -136,7 +152,10 @@ describe('TailwindConverter', () => {
         tailwindClasses: [
           'text-xs',
           '[animation-delay:200ms]',
+          '[border:4px_solid_transparent]',
           'py-3',
+          'border-r-2',
+          'border-dashed',
           'hover:blur-sm',
           'hover:brightness-50',
           'hover:sepia',
@@ -148,6 +167,47 @@ describe('TailwindConverter', () => {
           'hover:[transform:translateX(12px)_translateY(0.5em)_translateZ(0.5rem)_scaleY(0.725)_rotate(124deg)]',
           'hover:text-base',
           'md:font-semibold',
+        ],
+      },
+    ]);
+  });
+
+  it('should not prefix arbitrary properties', async () => {
+    const converter = createTailwindConverter({
+      arbitraryPropertiesIsEnabled: true,
+      tailwindConfig: {
+        content: [],
+        prefix: 'tw-',
+        separator: '_',
+        corePlugins: {
+          borderColor: false,
+        },
+      },
+    });
+    const converted = await converter.convertCSS(simpleCSS);
+
+    expect(converted.convertedRoot.toString()).toMatchSnapshot();
+    expect(converted.nodes).toEqual([
+      {
+        rule: expect.objectContaining({ selector: '.foo' }),
+        tailwindClasses: [
+          'tw-text-xs',
+          '[animation-delay:200ms]',
+          '[border:4px_solid_transparent]',
+          'tw-py-3',
+          'tw-border-r-2',
+          'tw-border-dashed',
+          'hover_tw-blur-sm',
+          'hover_tw-brightness-50',
+          'hover_tw-sepia',
+          'hover_tw-contrast-100',
+          'hover_tw-hue-rotate-30',
+          'hover_tw-invert-0',
+          'hover_tw-opacity-5',
+          'hover_tw-saturate-150',
+          'hover_[transform:translateX(12px)_translateY(0.5em)_translateZ(0.5rem)_scaleY(0.725)_rotate(124deg)]',
+          'hover_tw-text-base',
+          'md_tw-font-semibold',
         ],
       },
     ]);

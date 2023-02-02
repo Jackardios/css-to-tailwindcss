@@ -2,8 +2,9 @@
 
 exports[`TailwindConverter should consider \`prefix\`, \`separator\` and \`corePlugins\` configurations 1`] = `
 ".foo {
-  @apply tw-text-xs tw-py-3 hover_tw-blur-sm hover_tw-brightness-50 hover_tw-sepia hover_tw-contrast-100 hover_tw-hue-rotate-30 hover_tw-invert-0 hover_tw-opacity-5 hover_tw-saturate-150 hover_tw-text-base;
+  @apply tw-text-xs tw-py-3 tw-border-r-2 tw-border-dashed hover_tw-blur-sm hover_tw-brightness-50 hover_tw-sepia hover_tw-contrast-100 hover_tw-hue-rotate-30 hover_tw-invert-0 hover_tw-opacity-5 hover_tw-saturate-150 hover_tw-text-base;
   animation-delay: 200ms;
+  border: 4px solid transparent;
 }
 .foo:hover {
   transform: translateX(12px) translateY(0.5em) translateZ(0.5rem)
@@ -154,7 +155,7 @@ exports[`TailwindConverter should convert the css part string 1`] = `
 
 exports[`TailwindConverter should convert the simple CSS 1`] = `
 ".foo {
-  @apply text-xs py-3 hover:blur-sm hover:brightness-50 hover:sepia hover:contrast-100 hover:hue-rotate-30 hover:invert-0 hover:opacity-5 hover:saturate-150 hover:text-base md:font-semibold;
+  @apply text-xs py-3 border-r-2 border-dashed border-4 border-solid border-transparent hover:blur-sm hover:brightness-50 hover:sepia hover:contrast-100 hover:hue-rotate-30 hover:invert-0 hover:opacity-5 hover:saturate-150 hover:text-base md:font-semibold;
   animation-delay: 200ms;
 }
 .foo:hover {
@@ -166,7 +167,14 @@ exports[`TailwindConverter should convert the simple CSS 1`] = `
 
 exports[`TailwindConverter should convert unconvertible declarations if \`arbitraryPropertiesIsEnabled\` config is enabled 1`] = `
 ".foo {
-    @apply text-xs [animation-delay:200ms] py-3 hover:blur-sm hover:brightness-50 hover:sepia hover:contrast-100 hover:hue-rotate-30 hover:invert-0 hover:opacity-5 hover:saturate-150 hover:[transform:translateX(12px)_translateY(0.5em)_translateZ(0.5rem)_scaleY(0.725)_rotate(124deg)] hover:text-base md:font-semibold;
+    @apply text-xs [animation-delay:200ms] [border:4px_solid_transparent] py-3 border-r-2 border-dashed hover:blur-sm hover:brightness-50 hover:sepia hover:contrast-100 hover:hue-rotate-30 hover:invert-0 hover:opacity-5 hover:saturate-150 hover:[transform:translateX(12px)_translateY(0.5em)_translateZ(0.5rem)_scaleY(0.725)_rotate(124deg)] hover:text-base md:font-semibold;
+}
+"
+`;
+
+exports[`TailwindConverter should not prefix arbitrary properties 1`] = `
+".foo {
+    @apply tw-text-xs [animation-delay:200ms] [border:4px_solid_transparent] tw-py-3 tw-border-r-2 tw-border-dashed hover_tw-blur-sm hover_tw-brightness-50 hover_tw-sepia hover_tw-contrast-100 hover_tw-hue-rotate-30 hover_tw-invert-0 hover_tw-opacity-5 hover_tw-saturate-150 hover_[transform:translateX(12px)_translateY(0.5em)_translateZ(0.5rem)_scaleY(0.725)_rotate(124deg)] hover_tw-text-base md_tw-font-semibold;
 }
 "
 `;
