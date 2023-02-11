@@ -839,10 +839,33 @@ export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
     return classes;
   },
 
-  flex: (declaration, config) =>
-    config.tailwindConfig.corePlugins.flex
-      ? convertDeclarationValue(declaration.value, config.mapping.flex, 'flex')
-      : [],
+  flex: (declaration, config) => {
+    if (!config.tailwindConfig.corePlugins.flex) {
+      return [];
+    }
+
+    let classes = convertDeclarationValue(
+      declaration.value,
+      config.mapping.flex,
+      'flex',
+      ''
+    );
+
+    if (classes.length) {
+      return classes;
+    }
+
+    const [flexGrow, flexShrink = '1', flexBasis = '0%'] = declaration.value
+      .trim()
+      .split(/\s+/m);
+
+    return convertDeclarationValue(
+      `${flexGrow} ${flexShrink} ${flexBasis}`,
+      config.mapping.flex,
+      'flex',
+      declaration.value
+    );
+  },
 
   'flex-basis': (declaration, config) =>
     config.tailwindConfig.corePlugins.flexBasis

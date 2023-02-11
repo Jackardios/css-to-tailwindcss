@@ -160,6 +160,7 @@
     border-top-width: 100vh;
     border-width: 0px;
     bottom: 100vw;
+    flex: 1;
   }
 }
 
@@ -173,8 +174,10 @@
   break-inside: avoid-column;
   caret-color: var(--cyan);
   height: 2.25rem;
+  flex: 1 1;
 
   @media (min-width: 1280px) {
+    flex: 1 0;
     clear: both;
     color: #d9f99d;
     column-gap: 12rem;
