@@ -91,12 +91,14 @@ export class TailwindConverter {
 
     const nodes = nodesManager.getNodes();
     nodes.forEach(node => {
-      node.rule.prepend(
-        new AtRule({
-          name: 'apply',
-          params: node.tailwindClasses.join(' '),
-        })
-      );
+      if (node.tailwindClasses.length) {
+        node.rule.prepend(
+          new AtRule({
+            name: 'apply',
+            params: node.tailwindClasses.join(' '),
+          })
+        );
+      }
     });
 
     this.cleanRaws(parsed.root);
@@ -185,8 +187,8 @@ export class TailwindConverter {
     if (containerClassPrefix) {
       return {
         key: baseSelector,
-        fallbackRule: rule,
-        classesPrefixWhenFound: containerClassPrefix + classPrefix,
+        originalRule: rule,
+        classesPrefix: containerClassPrefix + classPrefix,
         tailwindClasses,
       };
     }
@@ -194,8 +196,8 @@ export class TailwindConverter {
     if (classPrefix) {
       return {
         key: TailwindNodesManager.convertRuleToKey(rule, baseSelector),
-        fallbackRule: rule,
-        classesPrefixWhenFound: classPrefix,
+        originalRule: rule,
+        classesPrefix: classPrefix,
         tailwindClasses,
       };
     }
