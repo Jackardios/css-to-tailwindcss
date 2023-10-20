@@ -23,13 +23,13 @@ import {
 import {
   convertDeclarationValue,
   prepareArbitraryValue,
-  TAILWIND_DECLARATION_CONVERTERS,
-} from './constants/converters';
+  DECLARATION_CONVERTERS_MAPPING,
+} from './mappings/declaration-converters-mapping';
 import { isChildNode } from './utils/isChildNode';
-import { MEDIA_PARAMS_MAPPING } from './constants/media-params-mapping';
+import { MEDIA_PARAMS_MAPPING } from './mappings/media-params-mapping';
 import { removeUnnecessarySpaces } from './utils/removeUnnecessarySpaces';
 import { reduceTailwindClasses } from './utils/reduceTailwindClasses';
-import { PSEUDOS_MAPPING } from './constants/pseudos-mapping';
+import { PSEUDOS_MAPPING } from './mappings/pseudos-mapping';
 import { detectIndent } from './utils/detectIndent';
 import { resolveConfig, ResolvedTailwindConfig } from './utils/resolveConfig';
 
@@ -160,7 +160,7 @@ export class TailwindConverter {
 
   protected convertDeclarationToClasses(declaration: Declaration) {
     let classes =
-      TAILWIND_DECLARATION_CONVERTERS[declaration.prop]?.(
+      DECLARATION_CONVERTERS_MAPPING[declaration.prop]?.(
         declaration,
         this.config
       ) || [];
