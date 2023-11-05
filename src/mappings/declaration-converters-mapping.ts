@@ -203,14 +203,16 @@ export function convertComposedSpacingDeclarationValue(
   return classes;
 }
 
-interface TailwindDeclarationConverters {
-  [property: string]: (
-    declaration: Declaration,
-    config: ResolvedTailwindConverterConfig
-  ) => string[];
+type DeclarationConverter = (
+  declaration: Declaration,
+  config: ResolvedTailwindConverterConfig
+) => string[];
+
+interface DeclarationConvertersMapping {
+  [property: string]: DeclarationConverter;
 }
 
-export const TAILWIND_DECLARATION_CONVERTERS: TailwindDeclarationConverters = {
+export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
   'accent-color': (declaration, config) =>
     config.tailwindConfig.corePlugins.accentColor
       ? convertColorDeclarationValue(

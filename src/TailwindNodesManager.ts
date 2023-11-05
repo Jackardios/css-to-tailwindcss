@@ -1,4 +1,4 @@
-import type { AtRule, Rule } from 'postcss';
+import { type AtRule, type Node, Rule, ChildNode } from 'postcss';
 import { isAtRuleNode } from './utils/isAtRuleNode';
 import { isChildNode } from './utils/isChildNode';
 
@@ -9,8 +9,9 @@ export interface ResolvedTailwindNode {
 
 export interface UnresolvedTailwindNode {
   key: string;
-  fallbackRule: Rule;
-  classesPrefixWhenFound: string;
+  rootRuleSelector?: string | null;
+  originalRule: Rule;
+  classesPrefix: string;
   tailwindClasses: string[];
 }
 
@@ -40,33 +41,48 @@ export class TailwindNodesManager {
 
   mergeNode(node: TailwindNode) {
     const nodeIsResolved = isResolvedTailwindNode(node);
-    const key = nodeIsResolved
+    const nodeKey = nodeIsResolved
       ? TailwindNodesManager.convertRuleToKey(node.rule)
       : node.key;
-    const foundNode = this.nodesMap.get(key);
+    const foundNode = this.nodesMap.get(nodeKey);
 
-    if (!foundNode) {
-      if (nodeIsResolved) {
-        this.nodesMap.set(key, node);
-      } else {
-        this.nodesMap.set(
-          TailwindNodesManager.convertRuleToKey(node.fallbackRule),
-          {
-            rule: node.fallbackRule,
-            tailwindClasses: node.tailwindClasses,
-          }
-        );
-      }
+    if (foundNode) {
+      foundNode.tailwindClasses = foundNode.tailwindClasses.concat(
+        nodeIsResolved
+          ? node.tailwindClasses
+          : node.tailwindClasses.map(
+              className => `${node.classesPrefix}${className}`
+            )
+      );
+
       return;
     }
 
-    foundNode.tailwindClasses = foundNode.tailwindClasses.concat(
-      nodeIsResolved
-        ? node.tailwindClasses
-        : node.tailwindClasses.map(
-            className => `${node.classesPrefixWhenFound}${className}`
-          )
-    );
+    if (nodeIsResolved) {
+      this.nodesMap.set(nodeKey, node);
+    } else {
+      let rule;
+
+      if (node.rootRuleSelector) {
+        rule = new Rule({
+          selector: node.rootRuleSelector,
+        });
+
+        const rootChild = this.upToRootChild(node.originalRule);
+        if (rootChild) {
+          node.originalRule.root().insertBefore(rootChild, rule);
+        }
+      } else {
+        rule = node.originalRule;
+      }
+
+      this.nodesMap.set(nodeKey, {
+        rule,
+        tailwindClasses: node.tailwindClasses.map(
+          className => `${node.classesPrefix}${className}`
+        ),
+      });
+    }
   }
 
   mergeNodes(nodes: TailwindNode[]) {
@@ -85,6 +101,21 @@ export class TailwindNodesManager {
 
   getNodes() {
     return Array.from(this.nodesMap.values());
+  }
+
+  protected upToRootChild(node: Node) {
+    let childNode: ChildNode | null = null;
+
+    while (
+      node.parent &&
+      node.parent.type !== 'root' &&
+      isChildNode(node.parent)
+    ) {
+      childNode = node = node.parent;
+      continue;
+    }
+
+    return childNode;
   }
 
   static convertRuleToKey(

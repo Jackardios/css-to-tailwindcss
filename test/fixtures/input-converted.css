@@ -1,33 +1,24 @@
 @charset "UTF-8";
 
-@media (min-width: 768px) {
-  .foo {
-    accent-color: hsl(41, 28.3%, 79.8%); /* custom-color-gold */
+.foo {
+  @apply md:accent-custom-color-gold;
+}
 
-    .baz {
-      text-align: center;
-    }
-  }
+.foo .baz {
+  @apply md:text-center;
+}
 
-  .bar {
-    align-content: center;
-    align-items: flex-start;
-  }
+.bar {
+  @apply md:content-center md:items-start;
 }
 
 @media (min-width: 769px) {
   .foo {
-    appearance: none;
+    @apply appearance-none disabled:opacity-0 disabled:invisible disabled:select-none;
+  }
 
-    &[some-attribute] {
-      user-select: text;
-    }
-
-    &[aria-disabled='true'] {
-      opacity: 0;
-      visibility: hidden;
-      user-select: none;
-    }
+  .foo[some-attribute] {
+    @apply select-text;
   }
 }
 
