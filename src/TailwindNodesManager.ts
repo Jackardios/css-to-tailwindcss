@@ -9,6 +9,7 @@ export interface ResolvedTailwindNode {
 
 export interface UnresolvedTailwindNode {
   key: string;
+  rootRuleSelector?: string | null;
   originalRule: Rule;
   classesPrefix: string;
   tailwindClasses: string[];
@@ -60,18 +61,23 @@ export class TailwindNodesManager {
     if (nodeIsResolved) {
       this.nodesMap.set(nodeKey, node);
     } else {
-      const newRule = new Rule({
-        // TODO: CONVERT NODE KEY TO RULE!!
-        selector: nodeKey,
-      });
+      let rule;
 
-      const rootChild = this.upToRootChild(node.originalRule);
-      if (rootChild) {
-        node.originalRule.root().insertBefore(rootChild, newRule);
+      if (node.rootRuleSelector) {
+        rule = new Rule({
+          selector: node.rootRuleSelector,
+        });
+
+        const rootChild = this.upToRootChild(node.originalRule);
+        if (rootChild) {
+          node.originalRule.root().insertBefore(rootChild, rule);
+        }
+      } else {
+        rule = node.originalRule;
       }
 
       this.nodesMap.set(nodeKey, {
-        rule: newRule,
+        rule,
         tailwindClasses: node.tailwindClasses.map(
           className => `${node.classesPrefix}${className}`
         ),

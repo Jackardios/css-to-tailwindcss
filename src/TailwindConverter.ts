@@ -180,22 +180,27 @@ export class TailwindConverter {
   ): TailwindNode {
     let { baseSelector, classPrefix } = this.parseSelector(rule.selector);
 
-    const containerClassPrefix = this.convertContainerToClassPrefix(
+    const classPrefixByParentNodes = this.convertContainerToClassPrefix(
       rule.parent
     );
 
-    if (containerClassPrefix) {
+    if (classPrefixByParentNodes) {
       return {
         key: baseSelector,
+        rootRuleSelector: baseSelector,
         originalRule: rule,
-        classesPrefix: containerClassPrefix + classPrefix,
+        classesPrefix: classPrefixByParentNodes + classPrefix,
         tailwindClasses,
       };
     }
 
     if (classPrefix) {
+      const key = TailwindNodesManager.convertRuleToKey(rule, baseSelector);
+      const isRootRule = key === baseSelector;
+
       return {
-        key: TailwindNodesManager.convertRuleToKey(rule, baseSelector),
+        key: key,
+        rootRuleSelector: isRootRule ? baseSelector : null,
         originalRule: rule,
         classesPrefix: classPrefix,
         tailwindClasses,
