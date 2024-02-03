@@ -80,6 +80,7 @@ export class TailwindConverter {
     const nodesManager = new TailwindNodesManager();
     const parsed = await postcss(this.config.postCSSPlugins).process(css, {
       parser: postcssSafeParser,
+      from: undefined,
     });
 
     parsed.root.walkRules(rule => {
