@@ -1,4 +1,4 @@
-const remValueRegexp = /^(\d+)?\.?\d+rem$/;
+const remValueRegexp = /^-?(\d*\.)?\d+rem$/i;
 
 export function remValueToPx(value: string, remInPx: number) {
   if (remValueRegexp.test(value.trim())) {

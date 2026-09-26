@@ -29,6 +29,9 @@ export function isUnresolvedTailwindNode(
   return !isResolvedTailwindNode(node);
 }
 
+/**
+ * @deprecated Utilities are placed by `UtilitiesPlacement` from `core/placement`, this class is kept for backward compatibility.
+ */
 export class TailwindNodesManager {
   protected nodesMap: Map<string, ResolvedTailwindNode>;
 
@@ -103,19 +106,21 @@ export class TailwindNodesManager {
     return Array.from(this.nodesMap.values());
   }
 
-  protected upToRootChild(node: Node) {
-    let childNode: ChildNode | null = null;
+  /**
+   * Returns the ancestor of the node (or the node itself) that is a direct child of the root.
+   */
+  protected upToRootChild(node: Node): ChildNode | null {
+    let current: Node = node;
 
     while (
-      node.parent &&
-      node.parent.type !== 'root' &&
-      isChildNode(node.parent)
+      current.parent &&
+      current.parent.type !== 'root' &&
+      isChildNode(current.parent)
     ) {
-      childNode = node = node.parent;
-      continue;
+      current = current.parent;
     }
 
-    return childNode;
+    return current.parent ? (current as ChildNode) : null;
   }
 
   static convertRuleToKey(

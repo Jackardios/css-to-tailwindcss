@@ -2,11 +2,14 @@
 
 exports[`TailwindConverter should consider \`prefix\`, \`separator\` and \`corePlugins\` configurations 1`] = `
 ".foo {
-  @apply tw-text-xs tw-py-3 tw-border-r-2 tw-border-dashed hover_tw-blur-sm hover_tw-brightness-50 hover_tw-sepia hover_tw-contrast-100 hover_tw-hue-rotate-30 hover_tw-invert-0 hover_tw-opacity-5 hover_tw-saturate-150 hover_tw-text-base;
+  @apply tw-text-xs tw-py-3 hover_tw-text-base;
   animation-delay: 200ms;
+  border-right: 2px dashed;
   border: 4px solid transparent;
 }
 .foo:hover {
+  filter: blur(4px) brightness(0.5) sepia(100%) contrast(1) hue-rotate(30deg)
+      invert(0) opacity(0.05) saturate(1.5);
   transform: translateX(12px) translateY(0.5em) translateZ(0.5rem)
       scaleY(0.725) rotate(124deg);
 }
@@ -38,7 +41,7 @@ exports[`TailwindConverter should convert border width on shorthand correctly 1`
     @apply border-l-[4.5em] border-r-[3px] border-b-2 border-[rgba(148,163,184,0.1)] border-t;
 }
 .g {
-    @apply border-[4.5em] border-solid;
+    @apply border-[4.5em] border-solid border-current;
 }
 .h {
     @apply border-x-2 border-[rgba(148,163,184,0.1)] border-y;
@@ -47,26 +50,26 @@ exports[`TailwindConverter should convert border width on shorthand correctly 1`
 
 exports[`TailwindConverter should convert border with color correctly even if width is missing 1`] = `
 "td {
-    @apply border-solid border-[rgba(148,163,184,0.1)];
+    @apply border-[medium] border-solid border-[rgba(148,163,184,0.1)];
 }
 .a {
     @apply border-0 border-dotted border-[rgba(148,163,184,0.1)];
 }
 .b {
-    @apply border-[rgba(148,163,184,0.1)];
+    @apply border-[medium] border-none border-[rgba(148,163,184,0.1)];
 }"
 `;
 
 exports[`TailwindConverter should convert the complex CSS 1`] = `
 "@charset \\"UTF-8\\";
 .foo{
-  @apply md:accent-custom-color-gold animate-spin aspect-video content-center content-end portrait:text-[black] after:content-['*'] after:align-text-top after:origin-top hidden:delay-150 hidden:duration-200 hidden:transition hidden:ease-in;
+  @apply md:accent-custom-color-gold;
 }
 .foo .baz{
-  @apply md:text-center place-content-around place-items-center place-self-stretch pointer-events-auto relative resize-x -right-32 lg:backdrop-brightness-90 lg:backdrop-sepia-[25%] lg:backdrop-blur-none motion-safe:custom-screen:supports-flex:order-[-123] motion-safe:custom-screen:supports-flex:tracking-[0.25rem] motion-safe:custom-screen:supports-flex:leading-snug motion-safe:custom-screen:supports-flex:list-inside motion-safe:custom-screen:supports-flex:list-decimal motion-safe:custom-screen:supports-flex:mb-[-0.875rem] motion-safe:custom-screen:supports-flex:max-h-full motion-safe:custom-screen:supports-flex:max-w-screen-2xl motion-safe:custom-screen:supports-flex:min-h-fit motion-safe:custom-screen:supports-flex:min-w-min motion-safe:custom-screen:supports-flex:mix-blend-color-dodge motion-safe:custom-screen:supports-flex:object-fill motion-safe:custom-screen:supports-flex:object-right-top motion-safe:custom-screen:supports-flex:ml-[2em] motion-safe:custom-screen:supports-flex:mr-[1vh] motion-safe:custom-screen:supports-flex:mt-3 motion-safe:custom-screen:supports-flex:mt-[3vw] motion-safe:custom-screen:supports-flex:-mb-2.5 motion-safe:custom-screen:supports-flex:mx-6 motion-safe:custom-screen:supports-flex:left-2 supports-[scroll-snap-align:end]:snap-end supports-[scroll-snap-align:end]:snap-always supports-[scroll-snap-align:end]:line-through supports-[scroll-snap-align:end]:scroll-mt-[12%] supports-[scroll-snap-align:end]:scroll-pl-3.5 supports-[scroll-snap-align:end]:scroll-pr-[10vw] supports-[scroll-snap-align:end]:scroll-pt-[10em] supports-[scroll-snap-align:end]:scroll-pb-5 supports-[scroll-snap-align:end]:scroll-p-[100px];
+  @apply md:text-center;
 }
 .bar{
-  @apply md:content-center md:items-start lg:backdrop-brightness-75 lg:backdrop-sepia lg:bg-local lg:content-end lg:items-center animate-[some-animation_2s_linear_infinite] origin-[12%_25.5%] ease-[cubic-bezier(0.23,0,0.25,1)] lg:bg-blend-difference lg:bg-clip-padding lg:bg-[hsl(30,51%,22%)] lg:disabled:bg-gradient-to-tr lg:disabled:bg-origin-padding lg:disabled:bg-left-bottom lg:disabled:bg-no-repeat lg:disabled:bg-contain lg:disabled:border-b-2 after:border-spacing-[5%] after:rounded-full after:border-l-[3px] after:border-l-transparent after:border-l-[1rem] after:border-r-2 after:border-r-[aqua] after:border-r-8 after:border-dashed after:border-t-[some-invalid-value] after:flex-1 after:rounded-tl-none after:rounded-tr-[0.25%] after:border-t-[current] after:border-t-[100vh] after:border-dotted after:border-0 after:bottom-[100vw] box-decoration-slice shadow box-border break-after-all break-before-page break-inside-avoid-column caret-[color:var(--cyan)] h-9 flex-1 xl:flex-[1_0] xl:clear-both xl:text-lime-200 xl:gap-x-48 xl:columns-3 xl:content-none xl:cursor-pointer xl:hidden xl:fill-sky-800 xl:blur-sm xl:brightness-50 xl:sepia xl:contrast-100 xl:hue-rotate-30 xl:invert-0 xl:opacity-5 xl:saturate-150 xl:flex-auto xl:basis-3 xl:flex-col-reverse xl:grow xl:shrink-0 xl:flex-wrap-reverse xl:float-right xl:text-2xl xl:antialiased xl:italic xl:ordinal xl:font-semibold;
+  @apply md:content-center md:items-start;
 }
 @media (min-width: 768px) {
 
@@ -74,20 +77,26 @@ exports[`TailwindConverter should convert the complex CSS 1`] = `
 }
 @media (min-width: 769px) {
   .foo {
-    @apply appearance-none disabled:opacity-0 disabled:invisible disabled:select-none;
+    @apply appearance-none;
   }
   .foo[some-attribute] {
     @apply select-text;
   }
+  .foo{
+    @apply aria-disabled:opacity-0 aria-disabled:invisible aria-disabled:select-none;
+  }
 }
 .foo {
+  @apply animate-spin aspect-video portrait:text-[black] after:content-['*'] after:align-text-top after:origin-top;
   --some-size: 12px;
   --some-color: #333333;
   align-self: self-end;
 
   /* unconvertable value */
+  align-content: center;
 
   /* duplicate */
+  align-content: flex-end;
 }
 
 /* duplicate with another value */
@@ -98,27 +107,47 @@ exports[`TailwindConverter should convert the complex CSS 1`] = `
   transform: translateX(12px) translateY(0.5em) translateZ(0.5rem)
       scaleY(0.725) rotate(124deg);
 }
+.foo{
+  @apply aria-hidden:delay-150 aria-hidden:duration-200 aria-hidden:transition aria-hidden:ease-in aria-[hidden=false]:collapse aria-[hidden=false]:whitespace-pre-line aria-[hidden=false]:w-6/12 aria-[hidden=false]:will-change-transform aria-[hidden=false]:break-all aria-[hidden=false]:z-40;
+}
 .foo[aria-hidden='true'] {
   transform: some invalid-transform;
 }
 .foo[aria-hidden='false'] {
-  @apply collapse whitespace-pre-line w-6/12 will-change-transform break-all z-40 translate-x-3 translate-y-[-0.5em] skew-x-1 skew-y-3 rotate-[-0.25turn] transition-colors duration-200 ease-out -scale-x-75 scale-y-105;
 
   /* unconvertable aria selector */
+  transform: translateX(12px) translateY(-0.5em) skew(1deg, 3deg)
+      scale(-0.75, 1.05) rotate(-0.25turn);
+  transition: color, background-color, border-color, text-decoration-color,
+      fill, stroke 200ms cubic-bezier(0, 0, 0.2, 1);
 }
 .foo .bar {
-  @apply translate-x-[10px_0.625rem] skew-x-2 -rotate-45 pl-[12%] pr-[100vw] pt-64 pb-1 px-6 py-8 -scale-75;
+  @apply pl-[12%] pr-[100vw] pt-64 pb-1;
+  transform: translate(10px 0.625rem) skew(2deg) scale(-0.75, -0.75)
+      rotate(-45deg);
   transition: transform 200ms cubic-bezier(0, 0, 0.2, 1), color,
       background-color, border-color, text-decoration-color, fill,
       stroke 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
+.foo .baz {
+  @apply place-content-around place-items-center place-self-stretch pointer-events-auto relative resize-x -right-32 motion-safe:custom-screen:supports-flex:order-[-123] motion-safe:custom-screen:supports-flex:tracking-[0.25rem] motion-safe:custom-screen:supports-flex:leading-snug motion-safe:custom-screen:supports-flex:list-inside motion-safe:custom-screen:supports-flex:list-decimal motion-safe:custom-screen:supports-flex:max-h-full motion-safe:custom-screen:supports-flex:max-w-screen-2xl motion-safe:custom-screen:supports-flex:min-h-fit motion-safe:custom-screen:supports-flex:min-w-min motion-safe:custom-screen:supports-flex:mix-blend-color-dodge motion-safe:custom-screen:supports-flex:object-fill motion-safe:custom-screen:supports-flex:object-right-top motion-safe:custom-screen:supports-flex:ml-[2em] motion-safe:custom-screen:supports-flex:mr-[1vh] motion-safe:custom-screen:supports-flex:mt-[3vw] motion-safe:custom-screen:supports-flex:-mb-2.5 motion-safe:custom-screen:supports-flex:left-2;
+}
 .foo .baz > .foo-bar {
-  @apply text-left text-[length:var(--some-size)] text-[color:var(--some-color)] active:focus:break-after-avoid active:focus:break-before-left active:focus:break-inside-auto xl:isolate xl:justify-center xl:active:text-sky-800 xl:active:focus:justify-items-start xl:active:focus:justify-self-end motion-safe:custom-screen:supports-flex:opacity-20 motion-safe:custom-screen:supports-flex:-order-last motion-safe:custom-screen:supports-flex:outline-lime-600 motion-safe:custom-screen:supports-flex:outline-offset-2 motion-safe:custom-screen:supports-flex:outline-dotted motion-safe:custom-screen:supports-flex:outline-2 motion-safe:custom-screen:supports-flex:overflow-hidden motion-safe:custom-screen:supports-flex:break-words motion-safe:custom-screen:supports-flex:overflow-x-scroll motion-safe:custom-screen:supports-flex:overflow-y-visible motion-safe:custom-screen:supports-flex:overscroll-contain motion-safe:custom-screen:supports-flex:overscroll-x-auto motion-safe:custom-screen:supports-flex:overscroll-y-none;
+  @apply text-left text-[length:var(--some-size)] text-[color:var(--some-color)] active:focus:break-after-avoid active:focus:break-before-left active:focus:break-inside-auto xl:isolate xl:justify-center;
 }
 .foo div > [data-zoo] {
   @apply border pl-[25%] pr-[1.5em] pt-0 pb-px bottom-full;
 }
+@media (min-width: 1024px) {
+  .foo .baz {
+    backdrop-filter: brightness(0.9) sepia(25%) blur(0);
+  }
+  .bar {
+    @apply backdrop-brightness-75 backdrop-sepia bg-local content-end items-center;
+  }
+}
 .bar {
+  @apply animate-[some-animation_2s_linear_infinite] origin-[12%_25.5%] ease-[cubic-bezier(0.23,0,0.25,1)] lg:bg-blend-difference lg:bg-clip-padding lg:bg-[hsl(30,51%,22%)] lg:aria-disabled:bg-gradient-to-tr lg:aria-disabled:bg-origin-padding lg:aria-disabled:bg-left-bottom lg:aria-disabled:bg-no-repeat lg:aria-disabled:bg-contain lg:aria-disabled:border-b-2;
 
   /* arbitary value */
   animation-delay: 200ms;
@@ -126,7 +155,7 @@ exports[`TailwindConverter should convert the complex CSS 1`] = `
   /* unconvertable value */
 }
 .loving .bar > .testing{
-  @apply lg:bg-[url('/some-path/to/large\\\\_image.jpg')] lg:border-custom-color-gold lg:border-b-custom-color-200 lg:border-b-[length:var(--some-size)] lg:border-neutral-600 lg:border-t-custom-color-400 lg:rounded-br-sm lg:rounded-bl lg:border-b-[2em] lg:border-b-[#ff0000] lg:border-4 lg:border-solid lg:border-dashed lg:border-separate;
+  @apply lg:bg-[url('/some-path/to/large\\\\_image.jpg')] lg:border-custom-color-gold lg:rounded-br-sm lg:rounded-bl lg:border-4 lg:border-solid lg:border-separate;
 }
 @media screen and (min-width: 1024px) {
   .bar[aria-disabled='true'] {
@@ -135,13 +164,35 @@ exports[`TailwindConverter should convert the complex CSS 1`] = `
   .loving .bar > .testing {
 
     /* custom-color-gold */
+    border-bottom: 2em dashed hsla(210, 100%, 51%, 0.016);
 
     /* custom-color-200 */
+    border-bottom-color: #ff0000;
+    border-bottom-width: var(--some-size);
+    border-color: hsla(0, 0%, 32%, 1);
 
     /* neutral-600 */
+    border-top-color: some-invalid-color;
   }
 }
+.bar::after {
+  @apply border-spacing-[5%] rounded-full;
+  border-left: 3px dashed;
+  border-left-color: transparent;
+  border-left-width: 1rem;
+  border-right: 2px;
+  border-right-color: aqua;
+  border-right-width: 0.5rem;
+}
+.bar:after {
+  @apply flex-1 rounded-tl-none rounded-tr-[0.25%] border-dotted bottom-[100vw];
+  border-top: some-invalid-value;
+  border-top-color: current;
+  border-top-width: 100vh;
+  border-width: 0px;
+}
 .bar {
+  @apply box-decoration-slice shadow box-border break-after-all break-before-page break-inside-avoid-column caret-[color:var(--cyan)] h-9 flex-1 xl:clear-both xl:text-lime-200 xl:gap-x-48 xl:columns-3 xl:content-none xl:cursor-pointer xl:hidden xl:fill-sky-800 xl:basis-3 xl:flex-col-reverse xl:grow xl:shrink-0 xl:float-right xl:text-2xl xl:antialiased xl:italic xl:ordinal xl:font-semibold;
   --cyan: #06b6d4;
 }
 @media (min-width: 1280px) {
@@ -150,18 +201,27 @@ exports[`TailwindConverter should convert the complex CSS 1`] = `
     /* sky-800 */
   }
 }
+.foo .baz > .foo-bar{
+  @apply xl:active:text-sky-800 xl:active:focus:justify-items-start xl:active:focus:justify-self-end motion-safe:custom-screen:supports-flex:opacity-20 motion-safe:custom-screen:supports-flex:-order-last motion-safe:custom-screen:supports-flex:outline-offset-2 motion-safe:custom-screen:supports-flex:break-words motion-safe:custom-screen:supports-flex:overflow-x-scroll motion-safe:custom-screen:supports-flex:overflow-y-visible motion-safe:custom-screen:supports-flex:overscroll-x-auto motion-safe:custom-screen:supports-flex:overscroll-y-none;
+}
 @media screen and (min-width: 1280px) {
   .bar {
+    filter: blur(4px) brightness(0.5) sepia(100%) contrast(1) hue-rotate(30deg)
+      invert(0) opacity(0.05) saturate(1.5);
     flex-flow: column;
+    flex-wrap: wrap-reverse;
   }
 }
 @media screen and (min-width: 1280px) and (max-width: 1440px) {
   .foo .baz {
-    @apply gap-[19px] auto-cols-min grid-flow-row auto-rows-max col-span-3 col-end-4 gap-x-12 col-start-3;
+    @apply gap-[19px] col-end-4 gap-x-12 col-start-3;
     grid: 'a' 200px 'b' max-content;
+    grid-auto-columns: min-content;
+    grid-auto-flow: row;
+    grid-auto-rows: max-content;
   }
   .foo .baz > .foo-bar {
-    @apply gap-8 row-span-full row-end-2 gap-y-6 row-start-auto grid-cols-2 grid-rows-5 h-[$some-invalid] active:text-[red];
+    @apply gap-8 row-end-2 gap-y-6 row-start-auto grid-cols-2 grid-rows-5 h-[$some-invalid] active:text-[red];
   }
 }
 @supports (display: flex) {
@@ -172,19 +232,27 @@ exports[`TailwindConverter should convert the complex CSS 1`] = `
           outline: 4px dashed rgb(254, 240, 138);
 
           /* yellow-200 */
+          outline-color: #65a30d;
 
           /* lime-600 */
+          outline-style: dotted;
+          outline-width: 0.125rem;
         }
       }
     }
   }
 }
 #some-id {
-  @apply opacity-40 order-last outline-teal-900 outline-offset-2 outline-8 supports-[display:block]:gap-y-80 supports-[display:block]:scroll-smooth supports-[display:block]:scroll-ml-2 supports-[display:block]:scroll-mr-[1.5em] supports-[display:block]:scroll-mb-8 supports-[display:block]:scroll-m-40;
+  @apply opacity-40 order-last outline-offset-2 supports-[display:block]:gap-y-80 supports-[display:block]:scroll-smooth supports-[display:block]:scroll-ml-2 supports-[display:block]:scroll-mr-[1.5em] supports-[display:block]:scroll-mt-40 supports-[display:block]:scroll-mb-8;
   outline: none;
+  outline-color: #134e4a;
 
   /* teal-900 */
   outline-style: groove;
+  outline-width: 0.5rem;
+}
+.foo .baz{
+  @apply supports-[scroll-snap-align:end]:snap-end supports-[scroll-snap-align:end]:snap-always supports-[scroll-snap-align:end]:line-through supports-[scroll-snap-align:end]:scroll-mt-[12%] supports-[scroll-snap-align:end]:scroll-pl-3.5 supports-[scroll-snap-align:end]:scroll-pr-[10vw] supports-[scroll-snap-align:end]:scroll-pt-[10em] supports-[scroll-snap-align:end]:scroll-pb-5;
 }
 @supports (scroll-snap-align: end) {
   .foo .baz {
@@ -192,12 +260,16 @@ exports[`TailwindConverter should convert the complex CSS 1`] = `
   }
 }
 div > [data-zoo] {
-  @apply stroke-[black] stroke-2 table-fixed text-justify decoration-custom-color-gold line-through decoration-dotted decoration-8 indent-[0.125rem] text-ellipsis;
+  @apply stroke-[black] stroke-2 table-fixed text-justify indent-0.5 text-ellipsis;
   text-decoration: underline #123456 dashed 4px;
 
   /* custom-color-100 */
+  text-decoration-color: hsl(41, 28.3%, 79.8%);
 
   /* custom-color-gold */
+  text-decoration-line: line-through;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 0.5rem;
 }
 "
 `;
@@ -210,10 +282,14 @@ exports[`TailwindConverter should convert the css part string 1`] = `
 
 exports[`TailwindConverter should convert the simple CSS 1`] = `
 ".foo {
-  @apply text-xs py-3 border-r-2 border-dashed border-4 border-solid border-transparent hover:blur-sm hover:brightness-50 hover:sepia hover:contrast-100 hover:hue-rotate-30 hover:invert-0 hover:opacity-5 hover:saturate-150 hover:text-base md:font-semibold;
+  @apply text-xs py-3 hover:text-base md:font-semibold;
   animation-delay: 200ms;
+  border-right: 2px dashed;
+  border: 4px solid transparent;
 }
 .foo:hover {
+  filter: blur(4px) brightness(0.5) sepia(100%) contrast(1) hue-rotate(30deg)
+      invert(0) opacity(0.05) saturate(1.5);
   transform: translateX(12px) translateY(0.5em) translateZ(0.5rem)
       scaleY(0.725) rotate(124deg);
 }
@@ -222,14 +298,16 @@ exports[`TailwindConverter should convert the simple CSS 1`] = `
 
 exports[`TailwindConverter should convert unconvertible declarations if \`arbitraryPropertiesIsEnabled\` config is enabled 1`] = `
 ".foo {
-    @apply text-xs [animation-delay:200ms] [border:4px_solid_transparent] py-3 border-r-2 border-dashed hover:blur-sm hover:brightness-50 hover:sepia hover:contrast-100 hover:hue-rotate-30 hover:invert-0 hover:opacity-5 hover:saturate-150 hover:[transform:translateX(12px)_translateY(0.5em)_translateZ(0.5rem)_scaleY(0.725)_rotate(124deg)] hover:text-base md:font-semibold;
+  @apply text-xs [animation-delay:200ms] [border-right:2px_dashed] py-3 hover:[filter:blur(4px)_brightness(0.5)_sepia(100%)_contrast(1)_hue-rotate(30deg)_invert(0)_opacity(0.05)_saturate(1.5)] hover:[transform:translateX(12px)_translateY(0.5em)_translateZ(0.5rem)_scaleY(0.725)_rotate(124deg)] hover:text-base md:font-semibold;
+  border: 4px solid transparent;
 }
 "
 `;
 
 exports[`TailwindConverter should not prefix arbitrary properties 1`] = `
 ".foo {
-    @apply tw-text-xs [animation-delay:200ms] [border:4px_solid_transparent] tw-py-3 tw-border-r-2 tw-border-dashed hover_tw-blur-sm hover_tw-brightness-50 hover_tw-sepia hover_tw-contrast-100 hover_tw-hue-rotate-30 hover_tw-invert-0 hover_tw-opacity-5 hover_tw-saturate-150 hover_[transform:translateX(12px)_translateY(0.5em)_translateZ(0.5rem)_scaleY(0.725)_rotate(124deg)] hover_tw-text-base md_tw-font-semibold;
+  @apply tw-text-xs [animation-delay:200ms] [border-right:2px_dashed] tw-py-3 hover_[filter:blur(4px)_brightness(0.5)_sepia(100%)_contrast(1)_hue-rotate(30deg)_invert(0)_opacity(0.05)_saturate(1.5)] hover_[transform:translateX(12px)_translateY(0.5em)_translateZ(0.5rem)_scaleY(0.725)_rotate(124deg)] hover_tw-text-base md_tw-font-semibold;
+  border: 4px solid transparent;
 }
 "
 `;

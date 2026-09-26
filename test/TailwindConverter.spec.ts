@@ -3,7 +3,11 @@ import {
   TailwindConverterConfig,
 } from '../src/TailwindConverter';
 import fs from 'fs';
+import type { Rule } from 'postcss';
+import type { Config } from 'tailwindcss';
 import path from 'path';
+
+import { expectValidConversion } from './helpers/tailwind';
 
 const complexCSS: string = fs
   .readFileSync(path.resolve(__dirname, './fixtures/input.css'))
@@ -32,34 +36,46 @@ const simpleCSS = `
 }
 `;
 
+const tailwindConfig: Config = {
+  content: [],
+  theme: {
+    extend: {
+      colors: {
+        'custom-color': {
+          100: '#123456',
+          200: 'hsla(210, 100%, 51.0%, 0.016)',
+          300: '#654321',
+          400: 'some-invalid-color',
+          gold: 'hsl(41, 28.3%, 79.8%)',
+          marine: 'rgb(4, 55, 242, 0.75)',
+        },
+      },
+      screens: {
+        'custom-screen': { min: '768px', max: '1024px' },
+      },
+    },
+    supports: {
+      grid: 'display: grid',
+      flex: 'display: flex',
+    },
+  },
+};
+
+/**
+ * Maps the nodes to plain objects: Jest fails to report differences of postcss nodes (they have circular references).
+ */
+function plainNodes(nodes: Array<{ rule: Rule; tailwindClasses: string[] }>) {
+  return nodes.map(({ rule, tailwindClasses }) => ({
+    selector: rule.selector,
+    tailwindClasses,
+  }));
+}
+
 function createTailwindConverter(config?: Partial<TailwindConverterConfig>) {
   return new TailwindConverter({
     remInPx: 16,
     postCSSPlugins: [require('postcss-nested')],
-    tailwindConfig: {
-      content: [],
-      theme: {
-        extend: {
-          colors: {
-            'custom-color': {
-              100: '#123456',
-              200: 'hsla(210, 100%, 51.0%, 0.016)',
-              300: '#654321',
-              400: 'some-invalid-color',
-              gold: 'hsl(41, 28.3%, 79.8%)',
-              marine: 'rgb(4, 55, 242, 0.75)',
-            },
-          },
-          screens: {
-            'custom-screen': { min: '768px', max: '1024px' },
-          },
-        },
-        supports: {
-          grid: 'display: grid',
-          flex: 'display: flex',
-        },
-      },
-    },
+    tailwindConfig,
     ...(config || {}),
   });
 }
@@ -70,25 +86,12 @@ describe('TailwindConverter', () => {
     const converted = await converter.convertCSS(simpleCSS);
 
     expect(converted.convertedRoot.toString()).toMatchSnapshot();
-    expect(converted.nodes).toEqual([
+    expect(plainNodes(converted.nodes)).toEqual([
       {
-        rule: expect.objectContaining({ selector: '.foo' }),
+        selector: '.foo',
         tailwindClasses: [
           'text-xs',
           'py-3',
-          'border-r-2',
-          'border-dashed',
-          'border-4',
-          'border-solid',
-          'border-transparent',
-          'hover:blur-sm',
-          'hover:brightness-50',
-          'hover:sepia',
-          'hover:contrast-100',
-          'hover:hue-rotate-30',
-          'hover:invert-0',
-          'hover:opacity-5',
-          'hover:saturate-150',
           'hover:text-base',
           'md:font-semibold',
         ],
@@ -111,24 +114,10 @@ describe('TailwindConverter', () => {
     const converted = await converter.convertCSS(simpleCSS);
 
     expect(converted.convertedRoot.toString()).toMatchSnapshot();
-    expect(converted.nodes).toEqual([
+    expect(plainNodes(converted.nodes)).toEqual([
       {
-        rule: expect.objectContaining({ selector: '.foo' }),
-        tailwindClasses: [
-          'tw-text-xs',
-          'tw-py-3',
-          'tw-border-r-2',
-          'tw-border-dashed',
-          'hover_tw-blur-sm',
-          'hover_tw-brightness-50',
-          'hover_tw-sepia',
-          'hover_tw-contrast-100',
-          'hover_tw-hue-rotate-30',
-          'hover_tw-invert-0',
-          'hover_tw-opacity-5',
-          'hover_tw-saturate-150',
-          'hover_tw-text-base',
-        ],
+        selector: '.foo',
+        tailwindClasses: ['tw-text-xs', 'tw-py-3', 'hover_tw-text-base'],
       },
     ]);
   });
@@ -146,24 +135,15 @@ describe('TailwindConverter', () => {
     const converted = await converter.convertCSS(simpleCSS);
 
     expect(converted.convertedRoot.toString()).toMatchSnapshot();
-    expect(converted.nodes).toEqual([
+    expect(plainNodes(converted.nodes)).toEqual([
       {
-        rule: expect.objectContaining({ selector: '.foo' }),
+        selector: '.foo',
         tailwindClasses: [
           'text-xs',
           '[animation-delay:200ms]',
-          '[border:4px_solid_transparent]',
+          '[border-right:2px_dashed]',
           'py-3',
-          'border-r-2',
-          'border-dashed',
-          'hover:blur-sm',
-          'hover:brightness-50',
-          'hover:sepia',
-          'hover:contrast-100',
-          'hover:hue-rotate-30',
-          'hover:invert-0',
-          'hover:opacity-5',
-          'hover:saturate-150',
+          'hover:[filter:blur(4px)_brightness(0.5)_sepia(100%)_contrast(1)_hue-rotate(30deg)_invert(0)_opacity(0.05)_saturate(1.5)]',
           'hover:[transform:translateX(12px)_translateY(0.5em)_translateZ(0.5rem)_scaleY(0.725)_rotate(124deg)]',
           'hover:text-base',
           'md:font-semibold',
@@ -187,24 +167,15 @@ describe('TailwindConverter', () => {
     const converted = await converter.convertCSS(simpleCSS);
 
     expect(converted.convertedRoot.toString()).toMatchSnapshot();
-    expect(converted.nodes).toEqual([
+    expect(plainNodes(converted.nodes)).toEqual([
       {
-        rule: expect.objectContaining({ selector: '.foo' }),
+        selector: '.foo',
         tailwindClasses: [
           'tw-text-xs',
           '[animation-delay:200ms]',
-          '[border:4px_solid_transparent]',
+          '[border-right:2px_dashed]',
           'tw-py-3',
-          'tw-border-r-2',
-          'tw-border-dashed',
-          'hover_tw-blur-sm',
-          'hover_tw-brightness-50',
-          'hover_tw-sepia',
-          'hover_tw-contrast-100',
-          'hover_tw-hue-rotate-30',
-          'hover_tw-invert-0',
-          'hover_tw-opacity-5',
-          'hover_tw-saturate-150',
+          'hover_[filter:blur(4px)_brightness(0.5)_sepia(100%)_contrast(1)_hue-rotate(30deg)_invert(0)_opacity(0.05)_saturate(1.5)]',
           'hover_[transform:translateX(12px)_translateY(0.5em)_translateZ(0.5rem)_scaleY(0.725)_rotate(124deg)]',
           'hover_tw-text-base',
           'md_tw-font-semibold',
@@ -218,7 +189,7 @@ describe('TailwindConverter', () => {
     const converted = await converter.convertCSS('');
 
     expect(converted.convertedRoot.toString()).toEqual('');
-    expect(converted.nodes).toEqual([]);
+    expect(plainNodes(converted.nodes)).toEqual([]);
   });
 
   it('should convert the css part string', async () => {
@@ -227,9 +198,9 @@ describe('TailwindConverter', () => {
       '{ text-align: center; font-size: 12px; &:hover { font-size: 16px; } @media screen and (min-width: 768px) { font-weight: 600; } }'
     );
     expect(converted.convertedRoot.toString()).toMatchSnapshot();
-    expect(converted.nodes).toEqual([
+    expect(plainNodes(converted.nodes)).toEqual([
       expect.objectContaining({
-        rule: expect.objectContaining({ selector: '' }),
+        selector: '',
         tailwindClasses: [
           'text-center',
           'text-xs',
@@ -240,181 +211,69 @@ describe('TailwindConverter', () => {
     ]);
   });
 
-  it('should throw an error when converting invalid css string', async () => {
+  it('should convert rules with selectors that cannot be parsed in place', async () => {
     const converter = createTailwindConverter();
-    await expect(
-      converter.convertCSS(
-        'some invalid css string... .some-class { display: block; } ...'
-      )
-    ).rejects.toThrow(Error);
+    const converted = await converter.convertCSS(
+      'some invalid css string... .some-class { display: block; } ...'
+    );
+
+    expect(plainNodes(converted.nodes)).toEqual([
+      {
+        selector: 'some invalid css string... .some-class',
+        tailwindClasses: ['block'],
+      },
+    ]);
   });
 
   it('should convert the complex CSS', async () => {
     const converter = createTailwindConverter();
     const converted = await converter.convertCSS(complexCSS);
 
+    await expectValidConversion(converted, tailwindConfig);
+
     expect(converted.convertedRoot.toString()).toMatchSnapshot();
-    expect(converted.nodes).toEqual([
+    expect(plainNodes(converted.nodes)).toEqual([
       {
-        rule: expect.objectContaining({ selector: '.foo' }),
+        selector: '.foo',
+        tailwindClasses: ['md:accent-custom-color-gold'],
+      },
+      {
+        selector: '.foo .baz',
+        tailwindClasses: ['md:text-center'],
+      },
+      {
+        selector: '.bar',
+        tailwindClasses: ['md:content-center', 'md:items-start'],
+      },
+      {
+        selector: '.foo',
+        tailwindClasses: ['appearance-none'],
+      },
+      {
+        selector: '.foo[some-attribute]',
+        tailwindClasses: ['select-text'],
+      },
+      {
+        selector: '.foo',
         tailwindClasses: [
-          'md:accent-custom-color-gold',
+          'aria-disabled:opacity-0',
+          'aria-disabled:invisible',
+          'aria-disabled:select-none',
+        ],
+      },
+      {
+        selector: '.foo',
+        tailwindClasses: [
           'animate-spin',
           'aspect-video',
-          'content-center',
-          'content-end',
           'portrait:text-[black]',
           "after:content-['*']",
           'after:align-text-top',
           'after:origin-top',
-          'hidden:delay-150',
-          'hidden:duration-200',
-          'hidden:transition',
-          'hidden:ease-in',
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.foo .baz' }),
-        tailwindClasses: [
-          'md:text-center',
-          'place-content-around',
-          'place-items-center',
-          'place-self-stretch',
-          'pointer-events-auto',
-          'relative',
-          'resize-x',
-          '-right-32',
-          'lg:backdrop-brightness-90',
-          'lg:backdrop-sepia-[25%]',
-          'lg:backdrop-blur-none',
-          'motion-safe:custom-screen:supports-flex:order-[-123]',
-          'motion-safe:custom-screen:supports-flex:tracking-[0.25rem]',
-          'motion-safe:custom-screen:supports-flex:leading-snug',
-          'motion-safe:custom-screen:supports-flex:list-inside',
-          'motion-safe:custom-screen:supports-flex:list-decimal',
-          'motion-safe:custom-screen:supports-flex:mb-[-0.875rem]',
-          'motion-safe:custom-screen:supports-flex:max-h-full',
-          'motion-safe:custom-screen:supports-flex:max-w-screen-2xl',
-          'motion-safe:custom-screen:supports-flex:min-h-fit',
-          'motion-safe:custom-screen:supports-flex:min-w-min',
-          'motion-safe:custom-screen:supports-flex:mix-blend-color-dodge',
-          'motion-safe:custom-screen:supports-flex:object-fill',
-          'motion-safe:custom-screen:supports-flex:object-right-top',
-          'motion-safe:custom-screen:supports-flex:ml-[2em]',
-          'motion-safe:custom-screen:supports-flex:mr-[1vh]',
-          'motion-safe:custom-screen:supports-flex:mt-3',
-          'motion-safe:custom-screen:supports-flex:mt-[3vw]',
-          'motion-safe:custom-screen:supports-flex:-mb-2.5',
-          'motion-safe:custom-screen:supports-flex:mx-6',
-          'motion-safe:custom-screen:supports-flex:left-2',
-          'supports-[scroll-snap-align:end]:snap-end',
-          'supports-[scroll-snap-align:end]:snap-always',
-          'supports-[scroll-snap-align:end]:line-through',
-          'supports-[scroll-snap-align:end]:scroll-mt-[12%]',
-          'supports-[scroll-snap-align:end]:scroll-pl-3.5',
-          'supports-[scroll-snap-align:end]:scroll-pr-[10vw]',
-          'supports-[scroll-snap-align:end]:scroll-pt-[10em]',
-          'supports-[scroll-snap-align:end]:scroll-pb-5',
-          'supports-[scroll-snap-align:end]:scroll-p-[100px]',
-        ],
-      },
-      {
-        rule: expect.objectContaining({ selector: '.bar' }),
-        tailwindClasses: [
-          'md:content-center',
-          'md:items-start',
-          'lg:backdrop-brightness-75',
-          'lg:backdrop-sepia',
-          'lg:bg-local',
-          'lg:content-end',
-          'lg:items-center',
-          'animate-[some-animation_2s_linear_infinite]',
-          'origin-[12%_25.5%]',
-          'ease-[cubic-bezier(0.23,0,0.25,1)]',
-          'lg:bg-blend-difference',
-          'lg:bg-clip-padding',
-          'lg:bg-[hsl(30,51%,22%)]',
-          'lg:disabled:bg-gradient-to-tr',
-          'lg:disabled:bg-origin-padding',
-          'lg:disabled:bg-left-bottom',
-          'lg:disabled:bg-no-repeat',
-          'lg:disabled:bg-contain',
-          'lg:disabled:border-b-2',
-          'after:border-spacing-[5%]',
-          'after:rounded-full',
-          'after:border-l-[3px]',
-          'after:border-l-transparent',
-          'after:border-l-[1rem]',
-          'after:border-r-2',
-          'after:border-r-[aqua]',
-          'after:border-r-8',
-          'after:border-dashed',
-          'after:border-t-[some-invalid-value]',
-          'after:flex-1',
-          'after:rounded-tl-none',
-          'after:rounded-tr-[0.25%]',
-          'after:border-t-[current]',
-          'after:border-t-[100vh]',
-          'after:border-dotted',
-          'after:border-0',
-          'after:bottom-[100vw]',
-          'box-decoration-slice',
-          'shadow',
-          'box-border',
-          'break-after-all',
-          'break-before-page',
-          'break-inside-avoid-column',
-          'caret-[color:var(--cyan)]',
-          'h-9',
-          'flex-1',
-          'xl:flex-[1_0]',
-          'xl:clear-both',
-          'xl:text-lime-200',
-          'xl:gap-x-48',
-          'xl:columns-3',
-          'xl:content-none',
-          'xl:cursor-pointer',
-          'xl:hidden',
-          'xl:fill-sky-800',
-          'xl:blur-sm',
-          'xl:brightness-50',
-          'xl:sepia',
-          'xl:contrast-100',
-          'xl:hue-rotate-30',
-          'xl:invert-0',
-          'xl:opacity-5',
-          'xl:saturate-150',
-          'xl:flex-auto',
-          'xl:basis-3',
-          'xl:flex-col-reverse',
-          'xl:grow',
-          'xl:shrink-0',
-          'xl:flex-wrap-reverse',
-          'xl:float-right',
-          'xl:text-2xl',
-          'xl:antialiased',
-          'xl:italic',
-          'xl:ordinal',
-          'xl:font-semibold',
-        ],
-      },
-      {
-        rule: expect.objectContaining({ selector: '.foo' }),
-        tailwindClasses: [
-          'appearance-none',
-          'disabled:opacity-0',
-          'disabled:invisible',
-          'disabled:select-none',
-        ],
-      },
-      {
-        rule: expect.objectContaining({ selector: '.foo[some-attribute]' }),
-        tailwindClasses: ['select-text'],
-      },
-      {
-        rule: expect.objectContaining({
-          selector: ".foo [aria-role='button']",
-        }),
+        selector: ".foo [aria-role='button']",
         tailwindClasses: [
           'uppercase',
           'underline-offset-[1rem]',
@@ -424,45 +283,55 @@ describe('TailwindConverter', () => {
         ],
       },
       {
-        rule: expect.objectContaining({
-          selector: ".foo[aria-hidden='false']",
-        }),
+        selector: '.foo',
         tailwindClasses: [
-          'collapse',
-          'whitespace-pre-line',
-          'w-6/12',
-          'will-change-transform',
-          'break-all',
-          'z-40',
-          'translate-x-3',
-          'translate-y-[-0.5em]',
-          'skew-x-1',
-          'skew-y-3',
-          'rotate-[-0.25turn]',
-          'transition-colors',
-          'duration-200',
-          'ease-out',
-          '-scale-x-75',
-          'scale-y-105',
+          'aria-hidden:delay-150',
+          'aria-hidden:duration-200',
+          'aria-hidden:transition',
+          'aria-hidden:ease-in',
+          'aria-[hidden=false]:collapse',
+          'aria-[hidden=false]:whitespace-pre-line',
+          'aria-[hidden=false]:w-6/12',
+          'aria-[hidden=false]:will-change-transform',
+          'aria-[hidden=false]:break-all',
+          'aria-[hidden=false]:z-40',
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.foo .bar' }),
+        selector: '.foo .bar',
+        tailwindClasses: ['pl-[12%]', 'pr-[100vw]', 'pt-64', 'pb-1'],
+      },
+      {
+        selector: '.foo .baz',
         tailwindClasses: [
-          'translate-x-[10px_0.625rem]',
-          'skew-x-2',
-          '-rotate-45',
-          'pl-[12%]',
-          'pr-[100vw]',
-          'pt-64',
-          'pb-1',
-          'px-6',
-          'py-8',
-          '-scale-75',
+          'place-content-around',
+          'place-items-center',
+          'place-self-stretch',
+          'pointer-events-auto',
+          'relative',
+          'resize-x',
+          '-right-32',
+          'motion-safe:custom-screen:supports-flex:order-[-123]',
+          'motion-safe:custom-screen:supports-flex:tracking-[0.25rem]',
+          'motion-safe:custom-screen:supports-flex:leading-snug',
+          'motion-safe:custom-screen:supports-flex:list-inside',
+          'motion-safe:custom-screen:supports-flex:list-decimal',
+          'motion-safe:custom-screen:supports-flex:max-h-full',
+          'motion-safe:custom-screen:supports-flex:max-w-screen-2xl',
+          'motion-safe:custom-screen:supports-flex:min-h-fit',
+          'motion-safe:custom-screen:supports-flex:min-w-min',
+          'motion-safe:custom-screen:supports-flex:mix-blend-color-dodge',
+          'motion-safe:custom-screen:supports-flex:object-fill',
+          'motion-safe:custom-screen:supports-flex:object-right-top',
+          'motion-safe:custom-screen:supports-flex:ml-[2em]',
+          'motion-safe:custom-screen:supports-flex:mr-[1vh]',
+          'motion-safe:custom-screen:supports-flex:mt-[3vw]',
+          'motion-safe:custom-screen:supports-flex:-mb-2.5',
+          'motion-safe:custom-screen:supports-flex:left-2',
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.foo .baz > .foo-bar' }),
+        selector: '.foo .baz > .foo-bar',
         tailwindClasses: [
           'text-left',
           'text-[length:var(--some-size)]',
@@ -472,26 +341,10 @@ describe('TailwindConverter', () => {
           'active:focus:break-inside-auto',
           'xl:isolate',
           'xl:justify-center',
-          'xl:active:text-sky-800',
-          'xl:active:focus:justify-items-start',
-          'xl:active:focus:justify-self-end',
-          'motion-safe:custom-screen:supports-flex:opacity-20',
-          'motion-safe:custom-screen:supports-flex:-order-last',
-          'motion-safe:custom-screen:supports-flex:outline-lime-600',
-          'motion-safe:custom-screen:supports-flex:outline-offset-2',
-          'motion-safe:custom-screen:supports-flex:outline-dotted',
-          'motion-safe:custom-screen:supports-flex:outline-2',
-          'motion-safe:custom-screen:supports-flex:overflow-hidden',
-          'motion-safe:custom-screen:supports-flex:break-words',
-          'motion-safe:custom-screen:supports-flex:overflow-x-scroll',
-          'motion-safe:custom-screen:supports-flex:overflow-y-visible',
-          'motion-safe:custom-screen:supports-flex:overscroll-contain',
-          'motion-safe:custom-screen:supports-flex:overscroll-x-auto',
-          'motion-safe:custom-screen:supports-flex:overscroll-y-none',
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.foo div > [data-zoo]' }),
+        selector: '.foo div > [data-zoo]',
         tailwindClasses: [
           'border',
           'pl-[25%]',
@@ -502,42 +355,114 @@ describe('TailwindConverter', () => {
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.loving .bar > .testing' }),
+        selector: '.bar',
+        tailwindClasses: [
+          'backdrop-brightness-75',
+          'backdrop-sepia',
+          'bg-local',
+          'content-end',
+          'items-center',
+        ],
+      },
+      {
+        selector: '.bar',
+        tailwindClasses: [
+          'animate-[some-animation_2s_linear_infinite]',
+          'origin-[12%_25.5%]',
+          'ease-[cubic-bezier(0.23,0,0.25,1)]',
+          'lg:bg-blend-difference',
+          'lg:bg-clip-padding',
+          'lg:bg-[hsl(30,51%,22%)]',
+          'lg:aria-disabled:bg-gradient-to-tr',
+          'lg:aria-disabled:bg-origin-padding',
+          'lg:aria-disabled:bg-left-bottom',
+          'lg:aria-disabled:bg-no-repeat',
+          'lg:aria-disabled:bg-contain',
+          'lg:aria-disabled:border-b-2',
+        ],
+      },
+      {
+        selector: '.loving .bar > .testing',
         tailwindClasses: [
           "lg:bg-[url('/some-path/to/large\\_image.jpg')]",
           'lg:border-custom-color-gold',
-          'lg:border-b-custom-color-200',
-          'lg:border-b-[length:var(--some-size)]',
-          'lg:border-neutral-600',
-          'lg:border-t-custom-color-400',
           'lg:rounded-br-sm',
           'lg:rounded-bl',
-          'lg:border-b-[2em]',
-          'lg:border-b-[#ff0000]',
           'lg:border-4',
           'lg:border-solid',
-          'lg:border-dashed',
           'lg:border-separate',
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.foo .baz' }),
+        selector: '.bar::after',
+        tailwindClasses: ['border-spacing-[5%]', 'rounded-full'],
+      },
+      {
+        selector: '.bar:after',
         tailwindClasses: [
-          'gap-[19px]',
-          'auto-cols-min',
-          'grid-flow-row',
-          'auto-rows-max',
-          'col-span-3',
-          'col-end-4',
-          'gap-x-12',
-          'col-start-3',
+          'flex-1',
+          'rounded-tl-none',
+          'rounded-tr-[0.25%]',
+          'border-dotted',
+          'bottom-[100vw]',
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.foo .baz > .foo-bar' }),
+        selector: '.bar',
+        tailwindClasses: [
+          'box-decoration-slice',
+          'shadow',
+          'box-border',
+          'break-after-all',
+          'break-before-page',
+          'break-inside-avoid-column',
+          'caret-[color:var(--cyan)]',
+          'h-9',
+          'flex-1',
+          'xl:clear-both',
+          'xl:text-lime-200',
+          'xl:gap-x-48',
+          'xl:columns-3',
+          'xl:content-none',
+          'xl:cursor-pointer',
+          'xl:hidden',
+          'xl:fill-sky-800',
+          'xl:basis-3',
+          'xl:flex-col-reverse',
+          'xl:grow',
+          'xl:shrink-0',
+          'xl:float-right',
+          'xl:text-2xl',
+          'xl:antialiased',
+          'xl:italic',
+          'xl:ordinal',
+          'xl:font-semibold',
+        ],
+      },
+      {
+        selector: '.foo .baz > .foo-bar',
+        tailwindClasses: [
+          'xl:active:text-sky-800',
+          'xl:active:focus:justify-items-start',
+          'xl:active:focus:justify-self-end',
+          'motion-safe:custom-screen:supports-flex:opacity-20',
+          'motion-safe:custom-screen:supports-flex:-order-last',
+          'motion-safe:custom-screen:supports-flex:outline-offset-2',
+          'motion-safe:custom-screen:supports-flex:break-words',
+          'motion-safe:custom-screen:supports-flex:overflow-x-scroll',
+          'motion-safe:custom-screen:supports-flex:overflow-y-visible',
+          'motion-safe:custom-screen:supports-flex:overscroll-x-auto',
+          'motion-safe:custom-screen:supports-flex:overscroll-y-none',
+        ],
+      },
+      {
+        selector: '.foo .baz',
+        tailwindClasses: ['gap-[19px]', 'col-end-4', 'gap-x-12', 'col-start-3'],
+      },
+      {
+        selector: '.foo .baz > .foo-bar',
         tailwindClasses: [
           'gap-8',
-          'row-span-full',
           'row-end-2',
           'gap-y-6',
           'row-start-auto',
@@ -548,33 +473,40 @@ describe('TailwindConverter', () => {
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '#some-id' }),
+        selector: '#some-id',
         tailwindClasses: [
           'opacity-40',
           'order-last',
-          'outline-teal-900',
           'outline-offset-2',
-          'outline-8',
           'supports-[display:block]:gap-y-80',
           'supports-[display:block]:scroll-smooth',
           'supports-[display:block]:scroll-ml-2',
           'supports-[display:block]:scroll-mr-[1.5em]',
+          'supports-[display:block]:scroll-mt-40',
           'supports-[display:block]:scroll-mb-8',
-          'supports-[display:block]:scroll-m-40',
         ],
       },
       {
-        rule: expect.objectContaining({ selector: 'div > [data-zoo]' }),
+        selector: '.foo .baz',
+        tailwindClasses: [
+          'supports-[scroll-snap-align:end]:snap-end',
+          'supports-[scroll-snap-align:end]:snap-always',
+          'supports-[scroll-snap-align:end]:line-through',
+          'supports-[scroll-snap-align:end]:scroll-mt-[12%]',
+          'supports-[scroll-snap-align:end]:scroll-pl-3.5',
+          'supports-[scroll-snap-align:end]:scroll-pr-[10vw]',
+          'supports-[scroll-snap-align:end]:scroll-pt-[10em]',
+          'supports-[scroll-snap-align:end]:scroll-pb-5',
+        ],
+      },
+      {
+        selector: 'div > [data-zoo]',
         tailwindClasses: [
           'stroke-[black]',
           'stroke-2',
           'table-fixed',
           'text-justify',
-          'decoration-custom-color-gold',
-          'line-through',
-          'decoration-dotted',
-          'decoration-8',
-          'indent-[0.125rem]',
+          'indent-0.5',
           'text-ellipsis',
         ],
       },
@@ -596,13 +528,17 @@ describe('TailwindConverter', () => {
     const converted = await converter.convertCSS(css);
 
     expect(converted.convertedRoot.toString()).toMatchSnapshot();
-    expect(converted.nodes).toEqual([
+    expect(plainNodes(converted.nodes)).toEqual([
       {
-        rule: expect.objectContaining({ selector: 'td' }),
-        tailwindClasses: ['border-solid', 'border-[rgba(148,163,184,0.1)]'],
+        selector: 'td',
+        tailwindClasses: [
+          'border-[medium]',
+          'border-solid',
+          'border-[rgba(148,163,184,0.1)]',
+        ],
       },
       {
-        rule: expect.objectContaining({ selector: '.a' }),
+        selector: '.a',
         tailwindClasses: [
           'border-0',
           'border-dotted',
@@ -610,8 +546,12 @@ describe('TailwindConverter', () => {
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.b' }),
-        tailwindClasses: ['border-[rgba(148,163,184,0.1)]'],
+        selector: '.b',
+        tailwindClasses: [
+          'border-[medium]',
+          'border-none',
+          'border-[rgba(148,163,184,0.1)]',
+        ],
       },
     ]);
   });
@@ -652,9 +592,9 @@ describe('TailwindConverter', () => {
     const converted = await converter.convertCSS(css);
 
     expect(converted.convertedRoot.toString()).toMatchSnapshot();
-    expect(converted.nodes).toEqual([
+    expect(plainNodes(converted.nodes)).toEqual([
       {
-        rule: expect.objectContaining({ selector: 'td' }),
+        selector: 'td',
         tailwindClasses: [
           'border',
           'border-solid',
@@ -662,7 +602,7 @@ describe('TailwindConverter', () => {
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.a' }),
+        selector: '.a',
         tailwindClasses: [
           'border-x-2',
           'border-[rgba(148,163,184,0.1)]',
@@ -670,11 +610,11 @@ describe('TailwindConverter', () => {
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.b' }),
+        selector: '.b',
         tailwindClasses: ['border-[rgba(148,163,184,0.1)]', 'border-2'],
       },
       {
-        rule: expect.objectContaining({ selector: '.c' }),
+        selector: '.c',
         tailwindClasses: [
           'border-b-[3px]',
           'border-x-0',
@@ -683,7 +623,7 @@ describe('TailwindConverter', () => {
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.d' }),
+        selector: '.d',
         tailwindClasses: [
           'border-b-2',
           'border-x-0',
@@ -692,7 +632,7 @@ describe('TailwindConverter', () => {
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.f' }),
+        selector: '.f',
         tailwindClasses: [
           'border-l-[4.5em]',
           'border-r-[3px]',
@@ -702,11 +642,11 @@ describe('TailwindConverter', () => {
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.g' }),
-        tailwindClasses: ['border-[4.5em]', 'border-solid'],
+        selector: '.g',
+        tailwindClasses: ['border-[4.5em]', 'border-solid', 'border-current'],
       },
       {
-        rule: expect.objectContaining({ selector: '.h' }),
+        selector: '.h',
         tailwindClasses: [
           'border-x-2',
           'border-[rgba(148,163,184,0.1)]',
@@ -730,9 +670,9 @@ describe('TailwindConverter', () => {
       }
     `);
 
-    expect(converted.nodes).toEqual([
+    expect(plainNodes(converted.nodes)).toEqual([
       {
-        rule: expect.objectContaining({ selector: '.a' }),
+        selector: '.a',
         tailwindClasses: [
           'border-[calc(1px_+_1px)]',
           'border-solid',
@@ -740,7 +680,7 @@ describe('TailwindConverter', () => {
         ],
       },
       {
-        rule: expect.objectContaining({ selector: '.b' }),
+        selector: '.b',
         tailwindClasses: ['border-[length:var(--width)]'],
       },
     ]);

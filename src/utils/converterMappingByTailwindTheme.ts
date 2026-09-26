@@ -12,6 +12,7 @@ import { flattenObject } from './flattenObject';
 import { remValueToPx } from './remValueToPx';
 import { normalizeNumbersInString } from './normalizeNumbersInString';
 import { removeUnnecessarySpaces } from './removeUnnecessarySpaces';
+import { normalizeTimeValue } from './normalizeTimeValue';
 
 export function normalizeValue(value: string) {
   return removeUnnecessarySpaces(normalizeNumbersInString(value));
@@ -98,6 +99,7 @@ function isSizeKey(key: string) {
     'spacing',
     'strokeWidth',
     'textDecorationThickness',
+    'textIndent',
     'textUnderlineOffset',
     'translate',
     'width',
@@ -163,6 +165,18 @@ function convertSizes(sizes: KeyValuePair, remInPx: number | null | undefined) {
   });
 }
 
+function isTimeKey(key: string) {
+  return ['transitionDuration', 'transitionDelay'].includes(key);
+}
+
+function convertTimes(times: KeyValuePair) {
+  return mapThemeTokens(times, (timeValue: string) => {
+    timeValue = timeValue?.toString();
+
+    return timeValue ? normalizeTimeValue(timeValue) : null;
+  });
+}
+
 function convertOtherThemeTokens(tokens: KeyValuePair | null | undefined) {
   return tokens
     ? mapThemeTokens(tokens, (tokenValue: string) => {
@@ -172,6 +186,15 @@ function convertOtherThemeTokens(tokens: KeyValuePair | null | undefined) {
       })
     : tokens;
 }
+
+const THEME_KEYS_WITHOUT_DEFAULT_UTILITY = [
+  // `border` sets the default width, `border-{color}` utilities don't include `DEFAULT`
+  'borderColor',
+  'divideColor',
+  'ringColor',
+  'transitionDuration',
+  'transitionTimingFunction',
+];
 
 export function converterMappingByTailwindTheme(
   resolvedTailwindTheme: Config['theme'],
@@ -188,7 +211,13 @@ export function converterMappingByTailwindTheme(
       return;
     }
 
-    const themeItem = (resolvedTailwindTheme as any)[key];
+    let themeItem = (resolvedTailwindTheme as any)[key];
+
+    if (THEME_KEYS_WITHOUT_DEFAULT_UTILITY.includes(key) && themeItem) {
+      // Tailwind doesn't generate a utility for the `DEFAULT` value of these keys
+      themeItem = { ...themeItem };
+      delete themeItem.DEFAULT;
+    }
 
     if (key === 'fontSize') {
       converterMapping[key] = convertFontSizes(themeItem, remInPx);
@@ -196,6 +225,8 @@ export function converterMappingByTailwindTheme(
       converterMapping[key] = convertScreens(themeItem);
     } else if (isColorKey(key)) {
       (converterMapping as any)[key] = convertColors(themeItem);
+    } else if (isTimeKey(key)) {
+      (converterMapping as any)[key] = convertTimes(themeItem);
     } else if (isSizeKey(key)) {
       (converterMapping as any)[key] = convertSizes(themeItem, remInPx);
     } else {

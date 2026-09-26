@@ -1,15 +1,22 @@
 import type { Declaration } from 'postcss';
 import type { ResolvedTailwindConverterConfig } from '../TailwindConverter';
-
+import type { ConvertedUtility } from '../core/placement';
 import { UTILITIES_MAPPING } from './utilities-mapping';
 import {
   normalizeColorValue,
   normalizeSizeValue,
   normalizeValue,
 } from '../utils/converterMappingByTailwindTheme';
-import { parseCSSFunctions } from '../utils/parseCSSFunctions';
-import { removeUnnecessarySpaces } from '../utils/removeUnnecessarySpaces';
+import {
+  isSingleToken,
+  parseFunctionList,
+  splitBySpaces,
+  splitByTopLevelCommas,
+} from '../core/values';
 import { isCSSVariable } from '../utils/isCSSVariable';
+import { getOwn } from '../utils/getOwn';
+import { isCSSWideKeyword } from '../utils/isCSSWideKeyword';
+import { isTimeValue, normalizeTimeValue } from '../utils/normalizeTimeValue';
 
 export function prepareArbitraryValue(value: string) {
   return normalizeValue(value).replace(/_/g, '\\_').replace(/\s+/g, '_');
@@ -21,7 +28,8 @@ type CSSDataType =
   | 'number'
   | 'image'
   | 'position'
-  | 'family-name';
+  | 'family-name'
+  | 'shadow';
 
 export function convertDeclarationValue(
   value: string,
@@ -29,10 +37,11 @@ export function convertDeclarationValue(
   classPrefix: string,
   fallbackValue = value,
   fallbackClassPrefix = classPrefix,
-  cssDataType: CSSDataType | null = null
+  cssDataType: CSSDataType | null = null,
+  alwaysUseDataType = false
 ) {
   const normalizedValue = normalizeValue(value);
-  const mappedValue = valuesMap[normalizedValue];
+  const mappedValue = getOwn(valuesMap, normalizedValue);
   if (mappedValue) {
     if (mappedValue === 'DEFAULT') {
       return [classPrefix];
@@ -43,29 +52,31 @@ export function convertDeclarationValue(
 
   const arbitraryValue = prepareArbitraryValue(fallbackValue);
 
-  if (!arbitraryValue) {
+  // Tailwind crashes on arbitrary values like `[constructor]` (it looks them up in plain objects)
+  if (!arbitraryValue || arbitraryValue in Object.prototype) {
     return [];
   }
 
-  if (cssDataType && isCSSVariable(arbitraryValue)) {
-    return [
-      `${fallbackClassPrefix}-[${
-        cssDataType ? `${cssDataType}:` : ''
-      }${arbitraryValue}]`,
-    ];
+  if (
+    cssDataType &&
+    (alwaysUseDataType ||
+      isCSSVariable(arbitraryValue) ||
+      isCSSWideKeyword(arbitraryValue))
+  ) {
+    return [`${fallbackClassPrefix}-[${cssDataType}:${arbitraryValue}]`];
   }
 
-  // Determine if we need to add a hyphen
-  const separator = fallbackClassPrefix.endsWith('-') ? '' : '-';
-
-  return [`${fallbackClassPrefix}${separator}[${arbitraryValue}]`];
+  return [`${fallbackClassPrefix}-[${arbitraryValue}]`];
 }
 
 export function strictConvertDeclarationValue(
   value: string,
   valuesMap: Record<string, string>
 ) {
-  return valuesMap[value] ? [valuesMap[value]] : [];
+  const key = value.trim();
+  const mapped = getOwn(valuesMap, key) || getOwn(valuesMap, key.toLowerCase());
+
+  return mapped ? [mapped] : [];
 }
 
 function convertColorDeclarationValue(
@@ -84,14 +95,26 @@ function convertColorDeclarationValue(
   );
 }
 
+const DIMENSION_REGEXP = /^([+-]?(?:\d*\.)?\d+)([a-z]+)$/i;
+
+/**
+ * Units are case-insensitive in CSS, but Tailwind recognizes only lowercase ones in arbitrary values.
+ */
+function lowerCaseUnit(value: string) {
+  const match = value.trim().match(DIMENSION_REGEXP);
+
+  return match ? match[1] + match[2].toLowerCase() : value;
+}
+
 function convertSizeDeclarationValue(
-  declValue: string,
+  rawDeclValue: string,
   valuesMap: Record<string, string>,
   classPrefix: string,
   remInPx: number | null | undefined,
   supportsNegativeValues = false,
   cssDataType: CSSDataType | null = null
 ) {
+  const declValue = lowerCaseUnit(rawDeclValue);
   const normalizedValue = normalizeSizeValue(declValue, remInPx);
   const isNegativeValue =
     supportsNegativeValues && normalizedValue.startsWith('-');
@@ -106,141 +129,184 @@ function convertSizeDeclarationValue(
   );
 }
 
-/**
- * Splits a value by whitespace outside parentheses, e.g. `calc(1px + 1px) solid rgb(0 0 0)`.
- */
-function splitValueBySpaces(value: string) {
-  const tokens: string[] = [];
-  let depth = 0;
-  let current = '';
-
-  for (const char of value.trim()) {
-    if (char === '(') {
-      depth++;
-    } else if (char === ')') {
-      depth = Math.max(0, depth - 1);
-    }
-
-    if (/\s/.test(char) && depth === 0) {
-      if (current) {
-        tokens.push(current);
-        current = '';
-      }
-    } else {
-      current += char;
-    }
-  }
-
-  if (current) {
-    tokens.push(current);
-  }
-
-  return tokens;
+function toClassNames(utilities: ConvertedUtility[]) {
+  return utilities.map(utility => utility.className);
 }
 
-function convertBorderDeclarationValue(
+const BORDER_SIDES = ['top', 'right', 'bottom', 'left'] as const;
+type BorderSide = (typeof BORDER_SIDES)[number];
+
+const BORDER_STYLES = new Set([
+  'none',
+  'hidden',
+  'dotted',
+  'dashed',
+  'solid',
+  'double',
+  'groove',
+  'ridge',
+  'inset',
+  'outset',
+]);
+
+const LENGTH_REGEXP = /^[+-]?(\d*\.)?\d+([a-z]+|%)?$/i;
+const LENGTH_FUNCTION_REGEXP = /^(calc|min|max|clamp)\(/i;
+
+function isLengthLike(value: string) {
+  return (
+    LENGTH_REGEXP.test(value) ||
+    LENGTH_FUNCTION_REGEXP.test(value) ||
+    ['thin', 'medium', 'thick'].includes(value.toLowerCase())
+  );
+}
+
+function borderLonghands(part: 'width' | 'style' | 'color', side?: BorderSide) {
+  return (side ? [side] : BORDER_SIDES).map(s => `border-${s}-${part}`);
+}
+
+/**
+ * Converts `border` and `border-{side}` shorthands. The value is converted entirely or not at all.
+ */
+export function convertBorderDeclarationToUtilities(
   value: string,
   config: ResolvedTailwindConverterConfig,
-  classPrefix: string
-) {
-  const tokens = splitValueBySpaces(value);
-  let width = '';
-  let style = '';
-  let color = '';
+  classPrefix: string,
+  side?: BorderSide
+): ConvertedUtility[] {
+  const tokens = splitBySpaces(value);
 
-  const borderStyles = new Set([
-    'none',
-    'hidden',
-    'dotted',
-    'dashed',
-    'solid',
-    'double',
-    'groove',
-    'ridge',
-    'inset',
-    'outset',
-  ]);
-
-  function isLength(value: string): boolean {
-    return (
-      /^[-+]?(\d+\.?\d*|\.\d+)([a-z]+|%)?$/i.test(value) ||
-      /^(calc|min|max|clamp)\(/i.test(value) ||
-      ['thin', 'medium', 'thick'].includes(value.toLowerCase())
-    );
+  if (!tokens.length || tokens.length > 3) {
+    return [];
   }
 
+  let width: string | null = null;
+  let style: string | null = null;
+  let color: string | null = null;
+
   for (const token of tokens) {
-    if (borderStyles.has(token.toLowerCase())) {
-      if (style) {
-        return [];
-      }
-      style = token.toLowerCase();
-    } else if (isLength(token)) {
-      if (width) {
-        return [];
-      }
-      // Tailwind recognizes lowercase units only, e.g. `1px` but not `1PX`
-      width = /^[-+.\d]/.test(token) ? token.toLowerCase() : token;
+    const lowerCased = token.toLowerCase();
+
+    if (BORDER_STYLES.has(lowerCased)) {
+      if (style) return [];
+      style = lowerCased;
+    } else if (isLengthLike(token)) {
+      if (width) return [];
+      width = token;
     } else {
-      if (color) {
-        return [];
-      }
+      if (color) return [];
       color = token;
     }
   }
 
-  let classes: string[] = [];
-
-  if (width) {
-    if (!config.tailwindConfig.corePlugins.borderWidth) {
-      return [];
-    }
-    // Tailwind recognizes lengths in arbitrary values, e.g. `border-[4.5em]` sets the width
-    classes = classes.concat(
-      convertSizeDeclarationValue(
-        width,
-        config.mapping.borderWidth,
-        classPrefix,
-        config.remInPx,
-        false,
-        'length'
-      )
-    );
+  // `var()` may stand for any part of the shorthand, a CSS-wide keyword sets all of them
+  if (
+    tokens.length === 1 &&
+    (isCSSVariable(tokens[0]) || isCSSWideKeyword(tokens[0]))
+  ) {
+    return [];
   }
 
-  if (style) {
-    if (!config.tailwindConfig.corePlugins.borderStyle) {
-      return [];
+  const { corePlugins } = config.tailwindConfig;
+
+  const convertWidth = (widthValue: string): ConvertedUtility | null => {
+    if (!corePlugins.borderWidth) {
+      return null;
     }
-    classes = classes.concat(
-      strictConvertDeclarationValue(style, UTILITIES_MAPPING['border-style'])
+
+    const [className] = convertSizeDeclarationValue(
+      widthValue,
+      config.mapping.borderWidth,
+      classPrefix,
+      config.remInPx,
+      false,
+      'length'
     );
-  }
 
-  if (color) {
-    if (!config.tailwindConfig.corePlugins.borderColor) {
-      return [];
+    return className
+      ? { className, props: borderLonghands('width', side) }
+      : null;
+  };
+
+  const convertStyle = (styleValue: string): ConvertedUtility | null => {
+    if (!corePlugins.borderStyle) {
+      return null;
     }
-    // Use classPrefix directly for color
-    const colorClassPrefix = classPrefix;
 
-    const colorClasses = convertColorDeclarationValue(
-      color,
+    const [className] = strictConvertDeclarationValue(
+      styleValue,
+      UTILITIES_MAPPING['border-style']
+    );
+
+    // the style utility sets all sides, even for a side shorthand
+    return className ? { className, props: borderLonghands('style') } : null;
+  };
+
+  const convertColor = (colorValue: string): ConvertedUtility | null => {
+    if (!corePlugins.borderColor) {
+      return null;
+    }
+
+    const [className] = convertColorDeclarationValue(
+      colorValue,
       config.mapping.borderColor,
-      colorClassPrefix,
+      classPrefix,
       'color'
     );
 
-    classes = classes.concat(colorClasses);
+    return className
+      ? { className, props: borderLonghands('color', side) }
+      : null;
+  };
+
+  let utilities: Array<ConvertedUtility | null>;
+
+  if (!style || style === 'none') {
+    const hasOnlyStyle = (!width || isZeroValue(width)) && !color;
+
+    if (hasOnlyStyle) {
+      // A border without a style (`none` is the initial one) isn't drawn and takes no space,
+      // which is the same as a zero width. The idiomatic utility doesn't reset the other parts.
+      const utility = side || width ? convertWidth('0') : convertStyle('none');
+
+      utilities = [utility && { ...utility, partial: true }];
+    } else if (side) {
+      // the width and the color are kept for a style set later, but a side style can't be reset
+      return [];
+    } else {
+      utilities = [
+        convertWidth(width ?? 'medium'),
+        convertStyle('none'),
+        convertColor(color ?? 'currentColor'),
+      ];
+    }
+  } else if (side && (config.strict || style !== 'solid')) {
+    // Tailwind has no per-side border styles, so the style of a side shorthand is applied
+    // to all sides. That's only acceptable for `solid`, the style of all borders in Tailwind.
+    return [];
+  } else {
+    // The shorthand resets omitted parts to their initial values, while Tailwind's preflight
+    // sets a zero width and a theme color by default.
+    utilities = [
+      convertWidth(width ?? 'medium'),
+      convertStyle(style),
+      convertColor(color ?? 'currentColor'),
+    ];
   }
 
-  return classes;
+  return utilities.every(utility => utility)
+    ? (utilities as ConvertedUtility[])
+    : [];
 }
 
 function parseComposedSpacingValue(value: string) {
-  const values = value.split(/\s+/m);
+  const values = splitBySpaces(value);
 
-  if (values.length > 4) {
+  if (
+    !values.length ||
+    values.length > 4 ||
+    splitByTopLevelCommas(value).length > 1 ||
+    values.some(item => item.includes('/') && !item.includes('('))
+  ) {
     return { top: null, right: null, bottom: null, left: null };
   }
 
@@ -252,38 +318,576 @@ function parseComposedSpacingValue(value: string) {
   };
 }
 
+interface ComposedSpacingMapping {
+  /** Prefix of the shorthand utility, e.g. `m` */
+  classPrefix?: string;
+  top: { valuesMapping: Record<string, string>; classPrefix: string };
+  right: { valuesMapping: Record<string, string>; classPrefix: string };
+  bottom: { valuesMapping: Record<string, string>; classPrefix: string };
+  left: { valuesMapping: Record<string, string>; classPrefix: string };
+}
+
+/**
+ * Converts `margin`/`padding`/`scroll-margin`/`scroll-padding` shorthands to one utility per side
+ * (they are merged back by `reduceTailwindClasses`). The value is converted entirely or not at all.
+ */
+export function convertComposedSpacingDeclarationToUtilities(
+  value: string,
+  mapping: ComposedSpacingMapping,
+  remInPx: number | null | undefined,
+  property: string,
+  supportsNegativeValues = true
+): ConvertedUtility[] {
+  if (/\bvar\(/i.test(value)) {
+    // a variable may stand for several values, so the value can't be split into sides
+    if (!mapping.classPrefix || splitByTopLevelCommas(value).length !== 1) {
+      return [];
+    }
+
+    // the shorthand utility is used, e.g. `m-spacing-a` (a theme value) or `m-[var(--a)]`
+    return convertSizeDeclarationValue(
+      value,
+      mapping.top.valuesMapping,
+      mapping.classPrefix,
+      remInPx,
+      supportsNegativeValues
+    ).map(className => ({
+      className,
+      props: BORDER_SIDES.map(side => `${property}-${side}`),
+    }));
+  }
+
+  const parsed = parseComposedSpacingValue(value);
+  const utilities: ConvertedUtility[] = [];
+
+  for (const side of BORDER_SIDES) {
+    const sideValue = parsed[side];
+    const { valuesMapping, classPrefix } = mapping[side] || {};
+
+    if (!sideValue || !valuesMapping || !classPrefix) {
+      return [];
+    }
+
+    const [className] = convertSizeDeclarationValue(
+      sideValue,
+      valuesMapping,
+      classPrefix,
+      remInPx,
+      supportsNegativeValues
+    );
+
+    if (!className) {
+      return [];
+    }
+
+    utilities.push({ className, props: [`${property}-${side}`] });
+  }
+
+  return utilities;
+}
+
+/**
+ * @deprecated Use `convertComposedSpacingDeclarationToUtilities`.
+ */
 export function convertComposedSpacingDeclarationValue(
   value: string,
-  mapping: {
-    top: { valuesMapping: Record<string, string>; classPrefix: string };
-    right: { valuesMapping: Record<string, string>; classPrefix: string };
-    bottom: { valuesMapping: Record<string, string>; classPrefix: string };
-    left: { valuesMapping: Record<string, string>; classPrefix: string };
-  },
+  mapping: ComposedSpacingMapping,
+  remInPx: number | null | undefined,
+  supportsNegativeValues = true
+) {
+  return toClassNames(
+    convertComposedSpacingDeclarationToUtilities(
+      value,
+      mapping,
+      remInPx,
+      'spacing',
+      supportsNegativeValues
+    )
+  );
+}
+
+function composedSpacingMapping(
+  valuesMapping: Record<string, string>,
+  classPrefix: string
+): ComposedSpacingMapping {
+  return {
+    classPrefix,
+    top: { valuesMapping, classPrefix: `${classPrefix}t` },
+    right: { valuesMapping, classPrefix: `${classPrefix}r` },
+    bottom: { valuesMapping, classPrefix: `${classPrefix}b` },
+    left: { valuesMapping, classPrefix: `${classPrefix}l` },
+  };
+}
+
+const TIMING_FUNCTION_KEYWORDS = new Set([
+  'ease',
+  'linear',
+  'ease-in',
+  'ease-out',
+  'ease-in-out',
+  'step-start',
+  'step-end',
+]);
+const TIMING_FUNCTION_REGEXP = /^(cubic-bezier|steps|linear)\(/i;
+
+/**
+ * Converts a single-item `transition` shorthand. Lists of transitions are not convertible,
+ * since Tailwind applies one duration/timing function/delay to all transitioned properties.
+ */
+export function convertTransitionDeclarationToUtilities(
+  value: string,
+  config: ResolvedTailwindConverterConfig
+): ConvertedUtility[] {
+  if (splitByTopLevelCommas(value).length !== 1 || isCSSWideKeyword(value)) {
+    return [];
+  }
+
+  let property: string | null = null;
+  let duration: string | null = null;
+  let delay: string | null = null;
+  let timingFunction: string | null = null;
+
+  for (const token of splitBySpaces(value)) {
+    const lowerCased = token.toLowerCase();
+
+    if (isTimeValue(token)) {
+      if (duration == null) {
+        duration = token;
+      } else if (delay == null) {
+        delay = token;
+      } else {
+        return [];
+      }
+    } else if (
+      TIMING_FUNCTION_KEYWORDS.has(lowerCased) ||
+      TIMING_FUNCTION_REGEXP.test(token)
+    ) {
+      if (timingFunction) return [];
+      timingFunction = token;
+    } else if (/^-?[a-z_][\w-]*$/i.test(token)) {
+      if (property) return [];
+      property = token;
+    } else {
+      return [];
+    }
+  }
+
+  const { corePlugins } = config.tailwindConfig;
+
+  if (property?.toLowerCase() === 'none') {
+    return !duration &&
+      !delay &&
+      !timingFunction &&
+      corePlugins.transitionProperty
+      ? [{ className: 'transition-none', props: ['transition-property'] }]
+      : [];
+  }
+
+  if (config.strict) {
+    // Tailwind's transition-property utilities set a default duration and timing function,
+    // while the shorthand resets them to `0s` and `ease`, and resets the delay to `0s`
+    duration = duration ?? '0s';
+    timingFunction = timingFunction ?? 'ease';
+    delay = delay ?? '0s';
+  }
+
+  const parts: Array<{
+    plugin: boolean | undefined;
+    convert: () => string[];
+    props: string[];
+  }> = [
+    {
+      plugin: corePlugins.transitionProperty,
+      convert: () =>
+        convertDeclarationValue(
+          property || 'all',
+          config.mapping.transitionProperty,
+          'transition'
+        ),
+      props: ['transition-property'],
+    },
+  ];
+
+  if (duration) {
+    const value = duration;
+    parts.push({
+      plugin: corePlugins.transitionDuration,
+      convert: () =>
+        convertDeclarationValue(
+          normalizeTimeValue(value),
+          config.mapping.transitionDuration,
+          'duration',
+          value
+        ),
+      props: ['transition-duration'],
+    });
+  }
+
+  if (timingFunction) {
+    const value = timingFunction;
+    parts.push({
+      plugin: corePlugins.transitionTimingFunction,
+      convert: () =>
+        convertDeclarationValue(
+          value,
+          config.mapping.transitionTimingFunction,
+          'ease'
+        ),
+      props: ['transition-timing-function'],
+    });
+  }
+
+  if (delay) {
+    const value = delay;
+    parts.push({
+      plugin: corePlugins.transitionDelay,
+      convert: () =>
+        convertDeclarationValue(
+          normalizeTimeValue(value),
+          config.mapping.transitionDelay,
+          'delay',
+          value
+        ),
+      props: ['transition-delay'],
+    });
+  }
+
+  const utilities: ConvertedUtility[] = [];
+
+  for (const part of parts) {
+    const [className] = part.plugin ? part.convert() : [];
+
+    if (!className) {
+      return [];
+    }
+
+    utilities.push({ className, props: part.props });
+  }
+
+  return utilities;
+}
+
+/** Order in which Tailwind applies filter functions (`filter` / `backdrop-filter`). */
+const FILTER_FUNCTIONS_ORDER = [
+  'blur',
+  'brightness',
+  'contrast',
+  'grayscale',
+  'hue-rotate',
+  'invert',
+  'saturate',
+  'sepia',
+  'drop-shadow',
+];
+const BACKDROP_FILTER_FUNCTIONS_ORDER = [
+  'blur',
+  'brightness',
+  'contrast',
+  'grayscale',
+  'hue-rotate',
+  'invert',
+  'opacity',
+  'saturate',
+  'sepia',
+];
+
+/**
+ * Converts a list of filter functions. Tailwind composes filters in a fixed order,
+ * so a value is converted only if its functions follow that order without repetitions.
+ */
+function convertFilterFunctions(
+  value: string,
+  functionsOrder: string[],
+  getValuesMapping: (
+    name: string
+  ) => Record<string, string> | false | undefined,
+  classPrefix: (name: string) => string,
   remInPx: number | null | undefined
 ) {
-  const parsed = parseComposedSpacingValue(value);
+  const functions = parseFunctionList(value);
+
+  if (!functions?.length) {
+    return [];
+  }
+
   let classes: string[] = [];
+  let lastIndex = -1;
 
-  (Object.keys(parsed) as ['top', 'right', 'bottom', 'left']).forEach(key => {
-    const value = parsed[key];
-    const { valuesMapping, classPrefix } = mapping[key] || {};
+  for (const { name, args } of functions) {
+    const lowerCasedName = name.toLowerCase();
+    const index = functionsOrder.indexOf(lowerCasedName);
+    const valuesMapping = getValuesMapping(lowerCasedName);
 
-    if (value && valuesMapping && classPrefix) {
-      classes = classes.concat(
-        convertSizeDeclarationValue(
-          value,
-          valuesMapping,
-          classPrefix,
-          remInPx,
-          true
-        )
-      );
+    if (index <= lastIndex || !valuesMapping || args.length !== 1) {
+      return [];
     }
-  });
+
+    lastIndex = index;
+    const [arg] = args;
+    const isDropShadow = lowerCasedName === 'drop-shadow';
+
+    if (!arg || (!isDropShadow && !isSingleToken(arg))) {
+      return [];
+    }
+
+    const converted = isDropShadow
+      ? convertDeclarationValue(arg, valuesMapping, classPrefix(lowerCasedName))
+      : convertSizeDeclarationValue(
+          arg,
+          valuesMapping,
+          classPrefix(lowerCasedName),
+          remInPx,
+          lowerCasedName === 'hue-rotate'
+        );
+
+    if (!converted.length) {
+      return [];
+    }
+
+    classes = classes.concat(converted);
+  }
 
   return classes;
 }
+
+function isZeroValue(value: string) {
+  return parseFloat(value) === 0 && /^[+-]?(0*\.)?0+[a-z%]*$/i.test(value);
+}
+
+type TransformComponent =
+  | 'translate-x'
+  | 'translate-y'
+  | 'rotate'
+  | 'skew-x'
+  | 'skew-y'
+  | 'scale-x'
+  | 'scale-y';
+
+/**
+ * Groups of transform components in the order Tailwind applies them:
+ * `translate() rotate() skewX() skewY() scaleX() scaleY()`.
+ * Components within a group commute, so their relative order doesn't matter.
+ */
+const TRANSFORM_COMPONENT_GROUPS: Record<TransformComponent, number> = {
+  'translate-x': 0,
+  'translate-y': 0,
+  rotate: 1,
+  'skew-x': 2,
+  'skew-y': 3,
+  'scale-x': 4,
+  'scale-y': 4,
+};
+
+function transformFunctionToComponents(
+  name: string,
+  args: string[]
+): Array<[TransformComponent, string]> | null {
+  if (!args.length || args.some(arg => !arg || !isSingleToken(arg))) {
+    return null;
+  }
+
+  const [first, second] = args;
+
+  switch (name.toLowerCase()) {
+    case 'translate':
+      if (args.length > 2) return null;
+      return second
+        ? [
+            ['translate-x', first],
+            ['translate-y', second],
+          ]
+        : [['translate-x', first]];
+    case 'translatex':
+      return args.length === 1 ? [['translate-x', first]] : null;
+    case 'translatey':
+      return args.length === 1 ? [['translate-y', first]] : null;
+    case 'rotate':
+    case 'rotatez':
+      return args.length === 1 ? [['rotate', first]] : null;
+    case 'skew':
+      if (args.length > 2) return null;
+      if (!second || isZeroValue(second)) return [['skew-x', first]];
+      // skew(a, b) equals skewX(a) skewY(b) only if one of the angles is zero
+      if (isZeroValue(first)) return [['skew-y', second]];
+      return null;
+    case 'skewx':
+      return args.length === 1 ? [['skew-x', first]] : null;
+    case 'skewy':
+      return args.length === 1 ? [['skew-y', first]] : null;
+    case 'scale':
+      if (args.length > 2) return null;
+      return [
+        ['scale-x', first],
+        ['scale-y', second || first],
+      ];
+    case 'scalex':
+      return args.length === 1 ? [['scale-x', first]] : null;
+    case 'scaley':
+      return args.length === 1 ? [['scale-y', first]] : null;
+    default:
+      return null;
+  }
+}
+
+function convertTransformDeclarationValue(
+  value: string,
+  config: ResolvedTailwindConverterConfig
+) {
+  const { corePlugins } = config.tailwindConfig;
+  const keyword = strictConvertDeclarationValue(
+    value.replace(/\s+/g, ''),
+    UTILITIES_MAPPING['transform']
+  );
+
+  if (keyword.length) {
+    // `transform-gpu`/`transform-cpu` compose the transform of the other utilities
+    return config.strict && keyword[0] !== 'transform-none' ? [] : keyword;
+  }
+
+  if (config.strict) {
+    // the utilities of transform functions compose with the ones set by other rules
+    // (e.g. `rotate-45 hover:translate-x-1` keeps the rotation on hover)
+    return [];
+  }
+
+  const functions = parseFunctionList(value);
+
+  if (!functions?.length) {
+    return [];
+  }
+
+  const components: Array<[TransformComponent, string]> = [];
+
+  for (const { name, args } of functions) {
+    const functionComponents = transformFunctionToComponents(name, args);
+
+    if (!functionComponents) {
+      return [];
+    }
+
+    components.push(...functionComponents);
+  }
+
+  const usedComponents = new Set<TransformComponent>();
+  let lastGroup = -1;
+  let classes: string[] = [];
+
+  for (const [component, componentValue] of components) {
+    const group = TRANSFORM_COMPONENT_GROUPS[component];
+
+    if (usedComponents.has(component) || group < lastGroup) {
+      return [];
+    }
+
+    usedComponents.add(component);
+    lastGroup = group;
+
+    let converted: string[] = [];
+
+    if (component.startsWith('translate')) {
+      converted = corePlugins.translate
+        ? convertSizeDeclarationValue(
+            componentValue,
+            config.mapping.translate,
+            component,
+            config.remInPx,
+            true
+          )
+        : [];
+    } else if (component === 'rotate') {
+      converted = corePlugins.rotate
+        ? convertSizeDeclarationValue(
+            componentValue,
+            config.mapping.rotate,
+            'rotate',
+            config.remInPx,
+            true
+          )
+        : [];
+    } else if (component.startsWith('skew')) {
+      converted = corePlugins.skew
+        ? convertSizeDeclarationValue(
+            componentValue,
+            config.mapping.skew,
+            component,
+            config.remInPx,
+            true
+          )
+        : [];
+    } else {
+      converted = corePlugins.scale
+        ? convertSizeDeclarationValue(
+            componentValue,
+            config.mapping.scale,
+            component,
+            config.remInPx,
+            true
+          )
+        : [];
+    }
+
+    if (!converted.length) {
+      return [];
+    }
+
+    classes = classes.concat(converted);
+  }
+
+  return classes;
+}
+
+function expandFlexValue(value: string) {
+  const tokens = splitBySpaces(value);
+  const isNumber = (token: string) => /^(\d*\.)?\d+$/.test(token);
+
+  if (tokens.length === 1) {
+    const [token] = tokens;
+    const keywords: Record<string, string> = {
+      auto: '1 1 auto',
+      none: '0 0 auto',
+      initial: '0 1 auto',
+    };
+    const keyword = keywords[token.toLowerCase()];
+
+    if (keyword) return keyword;
+    return isNumber(token) ? `${token} 1 0%` : `1 1 ${token}`;
+  }
+
+  if (tokens.length === 2) {
+    const [grow, shrinkOrBasis] = tokens;
+
+    return isNumber(shrinkOrBasis)
+      ? `${grow} ${shrinkOrBasis} 0%`
+      : `${grow} 1 ${shrinkOrBasis}`;
+  }
+
+  return tokens.join(' ');
+}
+
+const expandedFlexMappings = new WeakMap<
+  Record<string, string>,
+  Record<string, string>
+>();
+
+/** Theme `flex` values with keywords expanded, so that `flex: none` matches `flex-none`. */
+function expandedFlexMapping(mapping: Record<string, string> = {}) {
+  let expanded = expandedFlexMappings.get(mapping);
+
+  if (!expanded) {
+    expanded = {};
+    for (const value of Object.keys(mapping)) {
+      expanded[expandFlexValue(value)] = mapping[value];
+    }
+    expandedFlexMappings.set(mapping, expanded);
+  }
+
+  return expanded;
+}
+
+const FONT_WEIGHT_KEYWORDS: Record<string, string> = {
+  normal: '400',
+  bold: '700',
+};
 
 type DeclarationConverter = (
   declaration: Declaration,
@@ -294,169 +898,210 @@ interface DeclarationConvertersMapping {
   [property: string]: DeclarationConverter;
 }
 
-function convertBorderWidthDeclaration(
-  value: string,
+type DeclarationUtilitiesConverter = (
+  declaration: Declaration,
   config: ResolvedTailwindConverterConfig
-) {
-  const values = splitValueBySpaces(value);
-  const borderWidthMap = config.mapping.borderWidth;
-  const remInPx = config.remInPx;
+) => ConvertedUtility[];
 
-  let classes: string[] = [];
+/**
+ * Converters of shorthands whose utilities stand for different longhand properties.
+ * Every other converter produces utilities that stand for all longhands of the declaration.
+ */
+const FONT_SMOOTHING_PROPS = [
+  '-webkit-font-smoothing',
+  '-moz-osx-font-smoothing',
+];
 
-  if (values.length > 1 && values.some(item => /var\(/i.test(item))) {
-    // A variable may stand for several values
-    return [];
-  }
+/** Font smoothing utilities set both vendor properties. */
+const convertFontSmoothingDeclarationToUtilities: DeclarationUtilitiesConverter =
+  (declaration, config) =>
+    config.tailwindConfig.corePlugins.fontSmoothing
+      ? strictConvertDeclarationValue(
+          declaration.value,
+          UTILITIES_MAPPING['font-smoothing']
+        ).map(className => ({ className, props: FONT_SMOOTHING_PROPS }))
+      : [];
 
-  if (values.length === 1) {
-    // Applies to all sides
-    classes = classes.concat(
-      convertSizeDeclarationValue(
-        values[0],
-        borderWidthMap,
-        'border',
-        remInPx,
-        false,
-        'length'
-      )
-    );
-  } else if (values.length === 2) {
-    // [vertical, horizontal]
-    const [vertical, horizontal] = values;
-    classes = classes.concat(
-      convertSizeDeclarationValue(
-        vertical,
-        borderWidthMap,
-        'border-y',
-        remInPx,
-        false,
-        'length'
-      )
-    );
-    classes = classes.concat(
-      convertSizeDeclarationValue(
-        horizontal,
-        borderWidthMap,
-        'border-x',
-        remInPx,
-        false,
-        'length'
-      )
-    );
-  } else if (values.length === 3) {
-    // [top, horizontal, bottom]
-    const [top, horizontal, bottom] = values;
-    classes = classes.concat(
-      convertSizeDeclarationValue(
-        top,
-        borderWidthMap,
-        'border-t',
-        remInPx,
-        false,
-        'length'
-      ),
-      convertSizeDeclarationValue(
-        bottom,
-        borderWidthMap,
-        'border-b',
-        remInPx,
-        false,
-        'length'
-      )
-    );
-    classes = classes.concat(
-      convertSizeDeclarationValue(
-        horizontal,
-        borderWidthMap,
-        'border-x',
-        remInPx,
-        false,
-        'length'
-      )
-    );
-  } else if (values.length === 4) {
-    // [top, right, bottom, left]
-    const [top, right, bottom, left] = values;
+type BorderWidthGroup = [
+  value: string,
+  classPrefix: string,
+  sides: BorderSide[]
+];
 
-    // Check if vertical sides are the same
-    if (top === bottom) {
-      classes = classes.concat(
-        convertSizeDeclarationValue(
-          top,
-          borderWidthMap,
-          'border-y',
-          remInPx,
-          false,
-          'length'
-        )
-      );
-    } else {
-      classes = classes.concat(
-        convertSizeDeclarationValue(
-          top,
-          borderWidthMap,
-          'border-t',
-          remInPx,
-          false,
-          'length'
-        )
-      );
-      classes = classes.concat(
-        convertSizeDeclarationValue(
-          bottom,
-          borderWidthMap,
-          'border-b',
-          remInPx,
-          false,
-          'length'
-        )
-      );
+/**
+ * Converts `border-width` with up to 4 values to utilities of the sides, e.g. `1px 0` becomes
+ * `border-y border-x-0`. Zero widths are kept, since they override widths set elsewhere.
+ */
+const convertBorderWidthDeclarationToUtilities: DeclarationUtilitiesConverter =
+  (declaration, config) => {
+    if (!config.tailwindConfig.corePlugins.borderWidth) {
+      return [];
     }
 
-    // Check if horizontal sides are the same
-    if (right === left) {
-      classes = classes.concat(
-        convertSizeDeclarationValue(
-          right,
-          borderWidthMap,
-          'border-x',
-          remInPx,
-          false,
-          'length'
-        )
-      );
-    } else {
-      classes = classes.concat(
-        convertSizeDeclarationValue(
-          right,
-          borderWidthMap,
-          'border-r',
-          remInPx,
-          false,
-          'length'
-        )
-      );
-      classes = classes.concat(
-        convertSizeDeclarationValue(
-          left,
-          borderWidthMap,
-          'border-l',
-          remInPx,
-          false,
-          'length'
-        )
-      );
-    }
-  } else {
-    // Invalid number of values
-    return [];
-  }
+    const values = splitBySpaces(declaration.value);
+    const convert = (
+      value: string,
+      classPrefix: string,
+      sides: readonly BorderSide[]
+    ): ConvertedUtility[] =>
+      convertSizeDeclarationValue(
+        value,
+        config.mapping.borderWidth,
+        classPrefix,
+        config.remInPx,
+        false,
+        'length'
+      ).map(className => ({
+        className,
+        props: sides.map(side => `border-${side}-width`),
+      }));
 
-  return classes;
-}
+    if (values.length === 1) {
+      return convert(values[0], 'border', BORDER_SIDES);
+    }
+
+    // a variable may stand for several values, so the sides can't be determined
+    if (values.length > 4 || values.some(value => /\bvar\(/i.test(value))) {
+      return [];
+    }
+
+    const [top, right = top, bottom = top, left = right] = values;
+    const vertical: BorderWidthGroup[] =
+      top === bottom
+        ? [[top, 'border-y', ['top', 'bottom']]]
+        : [
+            [top, 'border-t', ['top']],
+            [bottom, 'border-b', ['bottom']],
+          ];
+    const horizontal: BorderWidthGroup[] =
+      right === left
+        ? [[right, 'border-x', ['right', 'left']]]
+        : [
+            [right, 'border-r', ['right']],
+            [left, 'border-l', ['left']],
+          ];
+    const utilities: ConvertedUtility[] = [];
+
+    for (const [value, classPrefix, sides] of [...vertical, ...horizontal]) {
+      const converted = convert(value, classPrefix, sides);
+
+      if (!converted.length) {
+        return [];
+      }
+
+      utilities.push(...converted);
+    }
+
+    return utilities;
+  };
+
+export const DECLARATION_UTILITIES_CONVERTERS_MAPPING: Record<
+  string,
+  DeclarationUtilitiesConverter
+> = {
+  '-moz-osx-font-smoothing': convertFontSmoothingDeclarationToUtilities,
+  '-webkit-font-smoothing': convertFontSmoothingDeclarationToUtilities,
+  border: (declaration, config) =>
+    convertBorderDeclarationToUtilities(declaration.value, config, 'border'),
+  'border-top': (declaration, config) =>
+    convertBorderDeclarationToUtilities(
+      declaration.value,
+      config,
+      'border-t',
+      'top'
+    ),
+  'border-right': (declaration, config) =>
+    convertBorderDeclarationToUtilities(
+      declaration.value,
+      config,
+      'border-r',
+      'right'
+    ),
+  'border-bottom': (declaration, config) =>
+    convertBorderDeclarationToUtilities(
+      declaration.value,
+      config,
+      'border-b',
+      'bottom'
+    ),
+  'border-left': (declaration, config) =>
+    convertBorderDeclarationToUtilities(
+      declaration.value,
+      config,
+      'border-l',
+      'left'
+    ),
+  'border-width': convertBorderWidthDeclarationToUtilities,
+  margin: (declaration, config) =>
+    config.tailwindConfig.corePlugins.margin
+      ? convertComposedSpacingDeclarationToUtilities(
+          declaration.value,
+          composedSpacingMapping(config.mapping.margin, 'm'),
+          config.remInPx,
+          'margin'
+        )
+      : [],
+  padding: (declaration, config) =>
+    config.tailwindConfig.corePlugins.padding
+      ? convertComposedSpacingDeclarationToUtilities(
+          declaration.value,
+          composedSpacingMapping(config.mapping.padding, 'p'),
+          config.remInPx,
+          'padding',
+          false
+        )
+      : [],
+  'scroll-margin': (declaration, config) =>
+    config.tailwindConfig.corePlugins.scrollMargin
+      ? convertComposedSpacingDeclarationToUtilities(
+          declaration.value,
+          composedSpacingMapping(config.mapping.scrollMargin, 'scroll-m'),
+          config.remInPx,
+          'scroll-margin'
+        )
+      : [],
+  'scroll-padding': (declaration, config) =>
+    config.tailwindConfig.corePlugins.scrollPadding
+      ? convertComposedSpacingDeclarationToUtilities(
+          declaration.value,
+          composedSpacingMapping(config.mapping.scrollPadding, 'scroll-p'),
+          config.remInPx,
+          'scroll-padding',
+          false
+        )
+      : [],
+  transition: (declaration, config) =>
+    convertTransitionDeclarationToUtilities(declaration.value, config),
+  // `break-normal` also resets `overflow-wrap`
+  'word-break': (declaration, config) =>
+    DECLARATION_CONVERTERS_MAPPING['word-break'](declaration, config).map(
+      className => ({
+        className,
+        props:
+          className === 'break-normal'
+            ? ['word-break', 'overflow-wrap']
+            : ['word-break'],
+      })
+    ),
+};
 
 export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
+  '-moz-osx-font-smoothing': (declaration, config) =>
+    config.tailwindConfig.corePlugins.fontSmoothing
+      ? strictConvertDeclarationValue(
+          declaration.value,
+          UTILITIES_MAPPING['font-smoothing']
+        )
+      : [],
+
+  '-webkit-font-smoothing': (declaration, config) =>
+    config.tailwindConfig.corePlugins.fontSmoothing
+      ? strictConvertDeclarationValue(
+          declaration.value,
+          UTILITIES_MAPPING['font-smoothing']
+        )
+      : [],
+
   'accent-color': (declaration, config) =>
     config.tailwindConfig.corePlugins.accentColor
       ? convertColorDeclarationValue(
@@ -518,71 +1163,46 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   'backdrop-filter': (declaration, config) => {
-    if (!config.tailwindConfig.corePlugins.backdropFilter) {
+    const { corePlugins } = config.tailwindConfig;
+
+    if (!corePlugins.backdropFilter) {
       return [];
     }
 
-    let classes: string[] = [];
-    const mappings: Record<string, any> = {
-      blur:
-        config.tailwindConfig.corePlugins.backdropBlur &&
-        config.mapping.backdropBlur,
-      brightness:
-        config.tailwindConfig.corePlugins.backdropBrightness &&
-        config.mapping.backdropBrightness,
-      contrast:
-        config.tailwindConfig.corePlugins.backdropContrast &&
-        config.mapping.backdropContrast,
-      grayscale:
-        config.tailwindConfig.corePlugins.backdropGrayscale &&
-        config.mapping.backdropGrayscale,
-      'hue-rotate':
-        config.tailwindConfig.corePlugins.backdropHueRotate &&
-        config.mapping.backdropHueRotate,
-      invert:
-        config.tailwindConfig.corePlugins.backdropInvert &&
-        config.mapping.backdropInvert,
-      opacity:
-        config.tailwindConfig.corePlugins.backdropOpacity &&
-        config.mapping.backdropOpacity,
-      saturate:
-        config.tailwindConfig.corePlugins.backdropSaturate &&
-        config.mapping.backdropSaturate,
-      sepia:
-        config.tailwindConfig.corePlugins.backdropSepia &&
-        config.mapping.backdropSepia,
-    };
+    if (declaration.value.trim().toLowerCase() === 'none') {
+      return ['backdrop-filter-none'];
+    }
 
-    parseCSSFunctions(declaration.value).every(({ name, value }) => {
-      if (name == null || value == null) {
-        classes = [];
-        return false;
-      }
+    if (config.strict) {
+      // the utilities of filter functions compose with the ones set by other rules
+      return [];
+    }
 
-      const mapping = mappings[name];
+    const mappings: Record<string, Record<string, string> | undefined | false> =
+      {
+        blur: corePlugins.backdropBlur && config.mapping.backdropBlur,
+        brightness:
+          corePlugins.backdropBrightness && config.mapping.backdropBrightness,
+        contrast:
+          corePlugins.backdropContrast && config.mapping.backdropContrast,
+        grayscale:
+          corePlugins.backdropGrayscale && config.mapping.backdropGrayscale,
+        'hue-rotate':
+          corePlugins.backdropHueRotate && config.mapping.backdropHueRotate,
+        invert: corePlugins.backdropInvert && config.mapping.backdropInvert,
+        opacity: corePlugins.backdropOpacity && config.mapping.backdropOpacity,
+        saturate:
+          corePlugins.backdropSaturate && config.mapping.backdropSaturate,
+        sepia: corePlugins.backdropSepia && config.mapping.backdropSepia,
+      };
 
-      if (mapping) {
-        delete mappings[name];
-
-        const currentClasses = convertSizeDeclarationValue(
-          value,
-          mapping,
-          `backdrop-${name}`,
-          config.remInPx,
-          name === 'hue-rotate'
-        );
-
-        if (currentClasses?.length) {
-          classes = classes.concat(currentClasses);
-          return true;
-        }
-      }
-
-      classes = [];
-      return false;
-    });
-
-    return classes;
+    return convertFilterFunctions(
+      declaration.value,
+      BACKDROP_FILTER_FUNCTIONS_ORDER,
+      name => mappings[name],
+      name => `backdrop-${name}`,
+      config.remInPx
+    );
   },
 
   'background-attachment': (declaration, config) =>
@@ -647,7 +1267,8 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
           'bg',
           declaration.value,
           'bg',
-          'position'
+          'position',
+          true
         )
       : [],
 
@@ -661,21 +1282,29 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
 
   'background-size': (declaration, config) =>
     config.tailwindConfig.corePlugins.backgroundSize
-      ? convertSizeDeclarationValue(
-          declaration.value,
+      ? convertDeclarationValue(
+          normalizeSizeValue(declaration.value, config.remInPx),
           config.mapping.backgroundSize,
           'bg',
-          config.remInPx,
-          false,
-          'length'
+          declaration.value,
+          'bg',
+          'length',
+          true
         )
       : [],
 
   border: (declaration, config) =>
-    convertBorderDeclarationValue(declaration.value, config, 'border'),
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['border'](declaration, config)
+    ),
 
   'border-bottom': (declaration, config) =>
-    convertBorderDeclarationValue(declaration.value, config, 'border-b'),
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['border-bottom'](
+        declaration,
+        config
+      )
+    ),
 
   'border-bottom-color': (declaration, config) =>
     config.tailwindConfig.corePlugins.borderColor
@@ -706,6 +1335,9 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
           config.remInPx
         )
       : [],
+
+  // 'border-bottom-style': (declaration, config) =>
+  //   strictConvertDeclarationValue(declaration.value, UTILITIES_MAPPING['border-style']),
 
   'border-bottom-width': (declaration, config) =>
     config.tailwindConfig.corePlugins.borderWidth
@@ -738,7 +1370,12 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   'border-left': (declaration, config) =>
-    convertBorderDeclarationValue(declaration.value, config, 'border-l'),
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['border-left'](
+        declaration,
+        config
+      )
+    ),
 
   'border-left-color': (declaration, config) =>
     config.tailwindConfig.corePlugins.borderColor
@@ -749,6 +1386,9 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
           'color'
         )
       : [],
+
+  // 'border-left-style': (declaration, config) =>
+  //   strictConvertDeclarationValue(declaration.value, UTILITIES_MAPPING['border-style']),
 
   'border-left-width': (declaration, config) =>
     config.tailwindConfig.corePlugins.borderWidth
@@ -773,7 +1413,12 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   'border-right': (declaration, config) =>
-    convertBorderDeclarationValue(declaration.value, config, 'border-r'),
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['border-right'](
+        declaration,
+        config
+      )
+    ),
 
   'border-right-color': (declaration, config) =>
     config.tailwindConfig.corePlugins.borderColor
@@ -784,6 +1429,9 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
           'color'
         )
       : [],
+
+  // 'border-right-style': (declaration, config) =>
+  //   strictConvertDeclarationValue(declaration.value, UTILITIES_MAPPING['border-style']),
 
   'border-right-width': (declaration, config) =>
     config.tailwindConfig.corePlugins.borderWidth
@@ -816,7 +1464,12 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   'border-top': (declaration, config) =>
-    convertBorderDeclarationValue(declaration.value, config, 'border-t'),
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['border-top'](
+        declaration,
+        config
+      )
+    ),
 
   'border-top-color': (declaration, config) =>
     config.tailwindConfig.corePlugins.borderColor
@@ -848,6 +1501,9 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
         )
       : [],
 
+  // 'border-top-style': (declaration, config) =>
+  //   strictConvertDeclarationValue(declaration.value, UTILITIES_MAPPING['border-style']),
+
   'border-top-width': (declaration, config) =>
     config.tailwindConfig.corePlugins.borderWidth
       ? convertSizeDeclarationValue(
@@ -861,12 +1517,15 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   'border-width': (declaration, config) =>
-    config.tailwindConfig.corePlugins.borderWidth
-      ? convertBorderWidthDeclaration(declaration.value, config)
-      : [],
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['border-width'](
+        declaration,
+        config
+      )
+    ),
 
   bottom: (declaration, config) =>
-    config.tailwindConfig.corePlugins.position
+    config.tailwindConfig.corePlugins.inset
       ? convertSizeDeclarationValue(
           declaration.value,
           config.mapping.inset,
@@ -877,7 +1536,7 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   'box-decoration-break': (declaration, config) =>
-    config.tailwindConfig.corePlugins.position
+    config.tailwindConfig.corePlugins.boxDecorationBreak
       ? strictConvertDeclarationValue(
           declaration.value,
           UTILITIES_MAPPING['box-decoration-break']
@@ -889,6 +1548,10 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       ? convertDeclarationValue(
           declaration.value,
           config.mapping.boxShadow,
+          'shadow',
+          declaration.value,
+          'shadow',
+          // without the hint `shadow-[var(--x)]` sets the shadow color
           'shadow'
         )
       : [],
@@ -1009,89 +1672,52 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   filter: (declaration, config) => {
-    if (!config.tailwindConfig.corePlugins.filter) {
+    const { corePlugins } = config.tailwindConfig;
+
+    if (!corePlugins.filter) {
       return [];
     }
 
-    let classes: string[] = [];
-    const mappings: Record<string, any> = {
-      blur: config.tailwindConfig.corePlugins.blur && config.mapping.blur,
-      brightness:
-        config.tailwindConfig.corePlugins.brightness &&
-        config.mapping.brightness,
-      contrast:
-        config.tailwindConfig.corePlugins.contrast && config.mapping.contrast,
-      grayscale:
-        config.tailwindConfig.corePlugins.grayscale && config.mapping.grayscale,
-      'hue-rotate':
-        config.tailwindConfig.corePlugins.hueRotate && config.mapping.hueRotate,
-      invert: config.tailwindConfig.corePlugins.invert && config.mapping.invert,
-      opacity:
-        config.tailwindConfig.corePlugins.opacity && config.mapping.opacity,
-      saturate:
-        config.tailwindConfig.corePlugins.saturate && config.mapping.saturate,
-      sepia: config.tailwindConfig.corePlugins.sepia && config.mapping.sepia,
-    };
+    if (declaration.value.trim().toLowerCase() === 'none') {
+      return ['filter-none'];
+    }
 
-    parseCSSFunctions(declaration.value).every(({ name, value }) => {
-      if (name == null || value == null) {
-        classes = [];
-        return false;
-      }
-
-      const mapping = mappings[name];
-
-      if (mapping) {
-        delete mapping[name];
-
-        const currentClasses = convertSizeDeclarationValue(
-          value,
-          mapping,
-          name,
-          config.remInPx,
-          name === 'hue-rotate'
-        );
-
-        if (currentClasses?.length) {
-          classes = classes.concat(currentClasses);
-          return true;
-        }
-      }
-
-      classes = [];
-      return false;
-    });
-
-    return classes;
-  },
-
-  flex: (declaration, config) => {
-    if (!config.tailwindConfig.corePlugins.flex) {
+    if (config.strict) {
+      // the utilities of filter functions compose with the ones set by other rules
       return [];
     }
 
-    let classes = convertDeclarationValue(
+    const mappings: Record<string, Record<string, string> | undefined | false> =
+      {
+        blur: corePlugins.blur && config.mapping.blur,
+        brightness: corePlugins.brightness && config.mapping.brightness,
+        contrast: corePlugins.contrast && config.mapping.contrast,
+        grayscale: corePlugins.grayscale && config.mapping.grayscale,
+        'hue-rotate': corePlugins.hueRotate && config.mapping.hueRotate,
+        invert: corePlugins.invert && config.mapping.invert,
+        saturate: corePlugins.saturate && config.mapping.saturate,
+        sepia: corePlugins.sepia && config.mapping.sepia,
+        'drop-shadow': corePlugins.dropShadow && config.mapping.dropShadow,
+      };
+
+    return convertFilterFunctions(
       declaration.value,
-      config.mapping.flex,
-      'flex',
-      ''
-    );
-
-    if (classes.length) {
-      return classes;
-    }
-
-    const [flexGrow, flexShrink = '1', flexBasis = '0%'] = declaration.value
-      .trim()
-      .split(/\s+/m);
-
-    return convertDeclarationValue(
-      `${flexGrow} ${flexShrink} ${flexBasis}`,
-      config.mapping.flex,
-      'flex',
-      declaration.value
+      FILTER_FUNCTIONS_ORDER,
+      name => mappings[name],
+      name => name,
+      config.remInPx
     );
   },
+
+  flex: (declaration, config) =>
+    config.tailwindConfig.corePlugins.flex
+      ? convertDeclarationValue(
+          expandFlexValue(declaration.value),
+          expandedFlexMapping(config.mapping.flex),
+          'flex',
+          declaration.value
+        )
+      : [],
 
   'flex-basis': (declaration, config) =>
     config.tailwindConfig.corePlugins.flexBasis
@@ -1145,17 +1771,31 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
         )
       : [],
 
-  'font-size': (declaration, config) =>
-    config.tailwindConfig.corePlugins.fontSize
-      ? convertSizeDeclarationValue(
+  'font-size': (declaration, config) => {
+    if (!config.tailwindConfig.corePlugins.fontSize) {
+      return [];
+    }
+
+    // Theme font sizes may also set line-height, letter-spacing and font-weight
+    return config.strict
+      ? convertDeclarationValue(
+          declaration.value,
+          {},
+          'text',
+          declaration.value,
+          'text',
+          'length',
+          true
+        )
+      : convertSizeDeclarationValue(
           declaration.value,
           config.mapping.fontSize,
           'text',
           config.remInPx,
           false,
           'length'
-        )
-      : [],
+        );
+  },
 
   'font-smoothing': (declaration, config) =>
     config.tailwindConfig.corePlugins.fontSmoothing
@@ -1181,17 +1821,25 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
         )
       : [],
 
-  'font-weight': (declaration, config) =>
-    config.tailwindConfig.corePlugins.fontWeight
-      ? convertDeclarationValue(
-          declaration.value,
-          config.mapping.fontWeight,
-          'font',
-          declaration.value,
-          'font',
-          'number'
-        )
-      : [],
+  'font-weight': (declaration, config) => {
+    if (!config.tailwindConfig.corePlugins.fontWeight) {
+      return [];
+    }
+
+    const value = declaration.value.trim();
+    const normalizedValue = FONT_WEIGHT_KEYWORDS[value.toLowerCase()] || value;
+
+    return convertDeclarationValue(
+      normalizedValue,
+      config.mapping.fontWeight,
+      'font',
+      value,
+      'font',
+      'number',
+      // Without a type hint Tailwind treats keywords (e.g. `bolder`) as a font family
+      !/^\d+$/.test(value)
+    );
+  },
 
   gap: (declaration, config) =>
     config.tailwindConfig.corePlugins.gap
@@ -1385,7 +2033,7 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   left: (declaration, config) =>
-    config.tailwindConfig.corePlugins.position
+    config.tailwindConfig.corePlugins.inset
       ? convertSizeDeclarationValue(
           declaration.value,
           config.mapping.inset,
@@ -1434,18 +2082,9 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   margin: (declaration, config) =>
-    config.tailwindConfig.corePlugins.margin
-      ? convertComposedSpacingDeclarationValue(
-          declaration.value,
-          {
-            top: { valuesMapping: config.mapping.margin, classPrefix: 'mt' },
-            right: { valuesMapping: config.mapping.margin, classPrefix: 'mr' },
-            bottom: { valuesMapping: config.mapping.margin, classPrefix: 'mb' },
-            left: { valuesMapping: config.mapping.margin, classPrefix: 'ml' },
-          },
-          config.remInPx
-        )
-      : [],
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['margin'](declaration, config)
+    ),
 
   'margin-bottom': (declaration, config) =>
     config.tailwindConfig.corePlugins.margin
@@ -1556,14 +2195,21 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
         )
       : [],
 
-  opacity: (declaration, config) =>
-    config.tailwindConfig.corePlugins.opacity
-      ? convertDeclarationValue(
-          declaration.value,
-          config.mapping.opacity,
-          'opacity'
-        )
-      : [],
+  opacity: (declaration, config) => {
+    if (!config.tailwindConfig.corePlugins.opacity) {
+      return [];
+    }
+
+    const value = declaration.value.trim();
+    const percentage = value.match(/^(\d*\.?\d+)%$/);
+
+    return convertDeclarationValue(
+      percentage ? `${parseFloat(percentage[1]) / 100}` : value,
+      config.mapping.opacity,
+      'opacity',
+      value
+    );
+  },
 
   order: (declaration, config) =>
     config.tailwindConfig.corePlugins.order
@@ -1577,7 +2223,8 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   outline: (declaration, config) =>
-    config.tailwindConfig.corePlugins.outlineStyle
+    // `outline-none` also sets `outline-offset`
+    config.tailwindConfig.corePlugins.outlineStyle && !config.strict
       ? strictConvertDeclarationValue(
           declaration.value,
           UTILITIES_MAPPING['outline']
@@ -1681,21 +2328,9 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   padding: (declaration, config) =>
-    config.tailwindConfig.corePlugins.padding
-      ? convertComposedSpacingDeclarationValue(
-          declaration.value,
-          {
-            top: { valuesMapping: config.mapping.padding, classPrefix: 'pt' },
-            right: { valuesMapping: config.mapping.padding, classPrefix: 'pr' },
-            bottom: {
-              valuesMapping: config.mapping.padding,
-              classPrefix: 'pb',
-            },
-            left: { valuesMapping: config.mapping.padding, classPrefix: 'pl' },
-          },
-          config.remInPx
-        )
-      : [],
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['padding'](declaration, config)
+    ),
 
   'padding-bottom': (declaration, config) =>
     config.tailwindConfig.corePlugins.padding
@@ -1810,7 +2445,7 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   right: (declaration, config) =>
-    config.tailwindConfig.corePlugins.position
+    config.tailwindConfig.corePlugins.inset
       ? convertSizeDeclarationValue(
           declaration.value,
           config.mapping.inset,
@@ -1839,30 +2474,12 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   'scroll-margin': (declaration, config) =>
-    config.tailwindConfig.corePlugins.scrollMargin
-      ? convertComposedSpacingDeclarationValue(
-          declaration.value,
-          {
-            top: {
-              valuesMapping: config.mapping.scrollMargin,
-              classPrefix: 'scroll-mt',
-            },
-            right: {
-              valuesMapping: config.mapping.scrollMargin,
-              classPrefix: 'scroll-mr',
-            },
-            bottom: {
-              valuesMapping: config.mapping.scrollMargin,
-              classPrefix: 'scroll-mb',
-            },
-            left: {
-              valuesMapping: config.mapping.scrollMargin,
-              classPrefix: 'scroll-ml',
-            },
-          },
-          config.remInPx
-        )
-      : [],
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['scroll-margin'](
+        declaration,
+        config
+      )
+    ),
 
   'scroll-margin-bottom': (declaration, config) =>
     config.tailwindConfig.corePlugins.scrollMargin
@@ -1909,30 +2526,12 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   'scroll-padding': (declaration, config) =>
-    config.tailwindConfig.corePlugins.scrollPadding
-      ? convertComposedSpacingDeclarationValue(
-          declaration.value,
-          {
-            top: {
-              valuesMapping: config.mapping.scrollPadding,
-              classPrefix: 'scroll-pt',
-            },
-            right: {
-              valuesMapping: config.mapping.scrollPadding,
-              classPrefix: 'scroll-pr',
-            },
-            bottom: {
-              valuesMapping: config.mapping.scrollPadding,
-              classPrefix: 'scroll-pb',
-            },
-            left: {
-              valuesMapping: config.mapping.scrollPadding,
-              classPrefix: 'scroll-pl',
-            },
-          },
-          config.remInPx
-        )
-      : [],
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['scroll-padding'](
+        declaration,
+        config
+      )
+    ),
 
   'scroll-padding-bottom': (declaration, config) =>
     config.tailwindConfig.corePlugins.scrollPadding
@@ -2041,7 +2640,7 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       return [];
     }
 
-    const parsed = declaration.value.trim().split(/\s+/m);
+    const parsed = splitBySpaces(declaration.value);
     return parsed.length === 1
       ? strictConvertDeclarationValue(
           parsed[0],
@@ -2128,7 +2727,7 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   top: (declaration, config) =>
-    config.tailwindConfig.corePlugins.position
+    config.tailwindConfig.corePlugins.inset
       ? convertSizeDeclarationValue(
           declaration.value,
           config.mapping.inset,
@@ -2146,150 +2745,10 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
         )
       : [],
 
-  transform: (declaration, config) => {
-    if (!config.tailwindConfig.corePlugins.transform) {
-      return [];
-    }
-
-    let classes: string[] = [];
-
-    function split(value: string) {
-      return value.split(/\s*,\s*/m).map(v => v.trim());
-    }
-
-    function convertTranslate(
-      value: string,
-      axis: 'x' | 'y' | 'both' = 'both'
-    ): string[] {
-      if (axis === 'both') {
-        const splitted = split(value);
-        return splitted.length > 2
-          ? []
-          : [
-              ...(splitted[0] ? convertTranslate(splitted[0], 'x') : []),
-              ...(splitted[1] ? convertTranslate(splitted[1], 'y') : []),
-            ];
-      }
-
-      return convertSizeDeclarationValue(
-        value,
-        config.mapping.translate,
-        `translate-${axis}`,
-        config.remInPx,
-        true
-      );
-    }
-
-    function convertSkew(
-      value: string,
-      axis: 'x' | 'y' | 'both' = 'both'
-    ): string[] {
-      if (axis === 'both') {
-        const splitted = split(value);
-        return splitted.length > 2
-          ? []
-          : [
-              ...(splitted[0] ? convertSkew(splitted[0], 'x') : []),
-              ...(splitted[1] ? convertSkew(splitted[1], 'y') : []),
-            ];
-      }
-
-      return convertSizeDeclarationValue(
-        value,
-        config.mapping.skew,
-        `skew-${axis}`,
-        config.remInPx,
-        true
-      );
-    }
-
-    function convertScale(
-      value: string,
-      axis: 'x' | 'y' | 'both' = 'both'
-    ): string[] {
-      if (axis === 'both') {
-        const splitted = split(value);
-
-        if (splitted.length > 2) {
-          return [];
-        }
-
-        if (splitted[0]) {
-          return [
-            ...convertScale(splitted[0], 'x'),
-            ...convertScale(splitted[1] || splitted[0], 'y'),
-          ];
-        }
-      }
-
-      return convertSizeDeclarationValue(
-        value,
-        config.mapping.scale,
-        `scale-${axis}`,
-        config.remInPx,
-        true
-      );
-    }
-
-    parseCSSFunctions(declaration.value).every(({ name, value }) => {
-      if (name == null || value == null) {
-        classes = [];
-        return false;
-      }
-
-      let converted: string[] = [];
-
-      if (config.tailwindConfig.corePlugins.translate) {
-        if (name === 'translate') {
-          converted = convertTranslate(value, 'both');
-        } else if (name === 'translateX') {
-          converted = convertTranslate(value, 'x');
-        } else if (name === 'translateY') {
-          converted = convertTranslate(value, 'y');
-        }
-      }
-
-      if (config.tailwindConfig.corePlugins.skew) {
-        if (name === 'skew') {
-          converted = convertSkew(value, 'both');
-        } else if (name === 'skewX') {
-          converted = convertSkew(value, 'x');
-        } else if (name === 'skewY') {
-          converted = convertSkew(value, 'y');
-        }
-      }
-
-      if (config.tailwindConfig.corePlugins.scale) {
-        if (name === 'scale') {
-          converted = convertScale(value, 'both');
-        } else if (name === 'scaleX') {
-          converted = convertScale(value, 'x');
-        } else if (name === 'scaleY') {
-          converted = convertScale(value, 'y');
-        }
-      }
-
-      if (config.tailwindConfig.corePlugins.rotate && name === 'rotate') {
-        converted = convertSizeDeclarationValue(
-          value,
-          config.mapping.rotate,
-          'rotate',
-          config.remInPx,
-          true
-        );
-      }
-
-      if (converted.length) {
-        classes = classes.concat(converted);
-        return true;
-      }
-
-      classes = [];
-      return false;
-    });
-
-    return classes;
-  },
+  transform: (declaration, config) =>
+    config.tailwindConfig.corePlugins.transform
+      ? convertTransformDeclarationValue(declaration.value, config)
+      : [],
 
   'transform-origin': (declaration, config) =>
     config.tailwindConfig.corePlugins.transformOrigin
@@ -2300,99 +2759,37 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
         )
       : [],
 
-  transition: (declaration, config) => {
-    let classes: string[] = [];
-    let hasDelay = false;
-
-    removeUnnecessarySpaces(declaration.value.trim())
-      .split(/\s+/m)
-      .map(v => v.trim())
-      .every((value, index) => {
-        let itemClasses: string[] = [];
-
-        if (index === 0) {
-          itemClasses = config.tailwindConfig.corePlugins.transitionProperty
-            ? convertDeclarationValue(
-                value,
-                config.mapping.transitionProperty,
-                'transition'
-              )
-            : [];
-        } else if (index === 1) {
-          itemClasses = config.tailwindConfig.corePlugins.transitionDuration
-            ? convertDeclarationValue(
-                value,
-                config.mapping.transitionDuration,
-                'duration'
-              )
-            : [];
-        } else if (index === 2) {
-          const isTimingFunction = isNaN(parseFloat(value));
-
-          if (isTimingFunction) {
-            itemClasses = config.tailwindConfig.corePlugins
-              .transitionTimingFunction
-              ? convertDeclarationValue(
-                  value,
-                  config.mapping.transitionTimingFunction,
-                  'ease'
-                )
-              : [];
-          } else {
-            hasDelay = true;
-            itemClasses = config.tailwindConfig.corePlugins.transitionDelay
-              ? convertDeclarationValue(
-                  value,
-                  config.mapping.transitionDelay,
-                  'delay'
-                )
-              : [];
-          }
-        } else if (index === 3) {
-          itemClasses =
-            config.tailwindConfig.corePlugins.transitionDelay && !hasDelay
-              ? convertDeclarationValue(
-                  value,
-                  config.mapping.transitionDelay,
-                  'delay'
-                )
-              : [];
-
-          hasDelay = true;
-        }
-
-        if (!itemClasses.length) {
-          classes = [];
-          return false;
-        }
-
-        classes = classes.concat(itemClasses);
-        return true;
-      });
-
-    return classes;
-  },
+  transition: (declaration, config) =>
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['transition'](
+        declaration,
+        config
+      )
+    ),
 
   'transition-delay': (declaration, config) =>
     config.tailwindConfig.corePlugins.transitionDelay
       ? convertDeclarationValue(
-          declaration.value,
+          normalizeTimeValue(declaration.value),
           config.mapping.transitionDelay,
-          'delay'
+          'delay',
+          declaration.value
         )
       : [],
 
   'transition-duration': (declaration, config) =>
     config.tailwindConfig.corePlugins.transitionDuration
       ? convertDeclarationValue(
-          declaration.value,
+          normalizeTimeValue(declaration.value),
           config.mapping.transitionDuration,
-          'duration'
+          'duration',
+          declaration.value
         )
       : [],
 
   'transition-property': (declaration, config) =>
-    config.tailwindConfig.corePlugins.transitionProperty
+    // Tailwind's transition-property utilities also set a duration and a timing function
+    config.tailwindConfig.corePlugins.transitionProperty && !config.strict
       ? convertDeclarationValue(
           declaration.value,
           config.mapping.transitionProperty,

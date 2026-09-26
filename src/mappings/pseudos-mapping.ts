@@ -27,7 +27,9 @@ export const PSEUDOS_MAPPING = {
   invalid: 'invalid',
   'in-range': 'in-range',
   'out-of-range': 'out-of-range',
+  'placeholder-shown': 'placeholder-shown',
   autofill: 'autofill',
+  optional: 'optional',
   'read-only': 'read-only',
   before: 'before',
   after: 'after',
@@ -36,5 +38,60 @@ export const PSEUDOS_MAPPING = {
   marker: 'marker',
   selection: 'selection',
   'file-selector-button': 'file',
+  placeholder: 'placeholder',
   backdrop: 'backdrop',
 };
+
+/** Variants that style a pseudo-element instead of the element itself. */
+export const PSEUDO_ELEMENT_VARIANTS = [
+  'first-letter',
+  'first-line',
+  'marker',
+  'selection',
+  'file',
+  'placeholder',
+  'backdrop',
+  'before',
+  'after',
+];
+
+/**
+ * The order in which Tailwind 3 emits rules of single-selector variants of equal specificity.
+ * A rule of a variant later in this list overrides a rule of an earlier one.
+ */
+export const SELECTOR_VARIANTS_ORDER = [
+  'first',
+  'last',
+  'only',
+  'odd',
+  'even',
+  'first-of-type',
+  'last-of-type',
+  'only-of-type',
+  'visited',
+  'target',
+  'open',
+  'default',
+  'checked',
+  'indeterminate',
+  'placeholder-shown',
+  'autofill',
+  'optional',
+  'required',
+  'valid',
+  'invalid',
+  'in-range',
+  'out-of-range',
+  'read-only',
+  'empty',
+  'focus-within',
+  'hover',
+  'focus',
+  'focus-visible',
+  'active',
+  'enabled',
+  'disabled',
+  // all `aria-*` variants share a position, as well as all `data-*` variants
+  'aria',
+  'data',
+];
