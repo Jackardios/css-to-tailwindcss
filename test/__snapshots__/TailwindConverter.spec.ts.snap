@@ -18,6 +18,45 @@ exports[`TailwindConverter should consider \`prefix\`, \`separator\` and \`coreP
 "
 `;
 
+exports[`TailwindConverter should convert border width on shorthand correctly 1`] = `
+"td {
+    @apply border border-solid border-[rgba(148,163,184,0.1)];
+}
+.a {
+    @apply border-x-2 border-[rgba(148,163,184,0.1)] border-y;
+}
+.b {
+    @apply border-[rgba(148,163,184,0.1)] border-2;
+}
+.c {
+    @apply border-b-[3px] border-x-0 border-[rgba(148,163,184,0.1)] border-t;
+}
+.d {
+    @apply border-b-2 border-x-0 border-[rgba(148,163,184,0.1)] border-t;
+}
+.f {
+    @apply border-l-[4.5em] border-r-[3px] border-b-2 border-[rgba(148,163,184,0.1)] border-t;
+}
+.g {
+    @apply border-[4.5em] border-solid;
+}
+.h {
+    @apply border-x-2 border-[rgba(148,163,184,0.1)] border-y;
+}"
+`;
+
+exports[`TailwindConverter should convert border with color correctly even if width is missing 1`] = `
+"td {
+    @apply border-solid border-[rgba(148,163,184,0.1)];
+}
+.a {
+    @apply border-0 border-dotted border-[rgba(148,163,184,0.1)];
+}
+.b {
+    @apply border-[rgba(148,163,184,0.1)];
+}"
+`;
+
 exports[`TailwindConverter should convert the complex CSS 1`] = `
 "@charset \\"UTF-8\\";
 .foo{

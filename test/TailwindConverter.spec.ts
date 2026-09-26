@@ -580,4 +580,169 @@ describe('TailwindConverter', () => {
       },
     ]);
   });
+
+  it('should convert border with color correctly even if width is missing', async () => {
+    const converter = createTailwindConverter();
+    const css = `
+      td {
+        border: solid rgba(148, 163, 184, 0.1);
+      }
+      .a {
+        border: rgba(148, 163, 184, 0.1) 0 dotted;
+      }
+      .b {
+        border: rgba(148, 163, 184, 0.1);
+      }`;
+    const converted = await converter.convertCSS(css);
+
+    expect(converted.convertedRoot.toString()).toMatchSnapshot();
+    expect(converted.nodes).toEqual([
+      {
+        rule: expect.objectContaining({ selector: 'td' }),
+        tailwindClasses: ['border-solid', 'border-[rgba(148,163,184,0.1)]'],
+      },
+      {
+        rule: expect.objectContaining({ selector: '.a' }),
+        tailwindClasses: [
+          'border-0',
+          'border-dotted',
+          'border-[rgba(148,163,184,0.1)]',
+        ],
+      },
+      {
+        rule: expect.objectContaining({ selector: '.b' }),
+        tailwindClasses: ['border-[rgba(148,163,184,0.1)]'],
+      },
+    ]);
+  });
+
+  it('should convert border width on shorthand correctly', async () => {
+    const converter = createTailwindConverter();
+    const css = `
+      td {
+        border: 1px solid rgba(148, 163, 184, 0.1);
+      }
+      .a {
+        border-color: rgba(148, 163, 184, 0.1);
+        border-width: 1px 2px;
+      }
+      .b {
+        border-color: rgba(148, 163, 184, 0.1);
+        border-width: 2px;
+      }
+      .c {
+        border-color: rgba(148, 163, 184, 0.1);
+        border-width: 1px 0px 3px;
+      }
+      .d {
+        border-color: rgba(148, 163, 184, 0.1);
+        border-width: 1px 0px 2px;
+      }
+      .f {
+        border-color: rgba(148, 163, 184, 0.1);
+        border-width: 1px 3px 2px 4.5em;
+      }
+      .g {
+        border: 4.5em solid;
+      }
+      .h {
+        border-color: rgba(148, 163, 184, 0.1);
+        border-width: 1px 2px 1px 2px;
+      }`;
+    const converted = await converter.convertCSS(css);
+
+    expect(converted.convertedRoot.toString()).toMatchSnapshot();
+    expect(converted.nodes).toEqual([
+      {
+        rule: expect.objectContaining({ selector: 'td' }),
+        tailwindClasses: [
+          'border',
+          'border-solid',
+          'border-[rgba(148,163,184,0.1)]',
+        ],
+      },
+      {
+        rule: expect.objectContaining({ selector: '.a' }),
+        tailwindClasses: [
+          'border-x-2',
+          'border-[rgba(148,163,184,0.1)]',
+          'border-y',
+        ],
+      },
+      {
+        rule: expect.objectContaining({ selector: '.b' }),
+        tailwindClasses: ['border-[rgba(148,163,184,0.1)]', 'border-2'],
+      },
+      {
+        rule: expect.objectContaining({ selector: '.c' }),
+        tailwindClasses: [
+          'border-b-[3px]',
+          'border-x-0',
+          'border-[rgba(148,163,184,0.1)]',
+          'border-t',
+        ],
+      },
+      {
+        rule: expect.objectContaining({ selector: '.d' }),
+        tailwindClasses: [
+          'border-b-2',
+          'border-x-0',
+          'border-[rgba(148,163,184,0.1)]',
+          'border-t',
+        ],
+      },
+      {
+        rule: expect.objectContaining({ selector: '.f' }),
+        tailwindClasses: [
+          'border-l-[4.5em]',
+          'border-r-[3px]',
+          'border-b-2',
+          'border-[rgba(148,163,184,0.1)]',
+          'border-t',
+        ],
+      },
+      {
+        rule: expect.objectContaining({ selector: '.g' }),
+        tailwindClasses: ['border-[4.5em]', 'border-solid'],
+      },
+      {
+        rule: expect.objectContaining({ selector: '.h' }),
+        tailwindClasses: [
+          'border-x-2',
+          'border-[rgba(148,163,184,0.1)]',
+          'border-y',
+        ],
+      },
+    ]);
+  });
+
+  it('should convert border width values that contain functions or variables', async () => {
+    const converter = createTailwindConverter();
+    const converted = await converter.convertCSS(`
+      .a {
+        border: calc(1px + 1px) solid red;
+      }
+      .b {
+        border-width: var(--width);
+      }
+      .c {
+        border-width: var(--width) 0;
+      }
+    `);
+
+    expect(converted.nodes).toEqual([
+      {
+        rule: expect.objectContaining({ selector: '.a' }),
+        tailwindClasses: [
+          'border-[calc(1px_+_1px)]',
+          'border-solid',
+          'border-[red]',
+        ],
+      },
+      {
+        rule: expect.objectContaining({ selector: '.b' }),
+        tailwindClasses: ['border-[length:var(--width)]'],
+      },
+    ]);
+  });
 });
