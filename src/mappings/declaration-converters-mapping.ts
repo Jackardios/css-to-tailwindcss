@@ -21,10 +21,19 @@ import { isTimeValue, normalizeTimeValue } from '../utils/normalizeTimeValue';
 
 /**
  * Escapes a value for an arbitrary value or variant: Tailwind reads `_` as a space and `\_` as `_`,
- * and keeps other backslashes as is.
+ * and keeps other backslashes as is. Characters that are whitespace in JavaScript but not in CSS
+ * (e.g. a no-break space) would split the class in `@apply`, so they become CSS escapes (`\a0 `).
  */
 export function escapeArbitraryValue(value: string) {
-  return value.replace(/_|\s+/g, match => (match === '_' ? '\\_' : '_'));
+  return value.replace(/[_\s]/g, match => {
+    if (match === '_') {
+      return '\\_';
+    }
+
+    return /[ \t\n\r\f]/.test(match)
+      ? '_'
+      : `\\${match.charCodeAt(0).toString(16)}_`;
+  });
 }
 
 export function prepareArbitraryValue(value: string) {
@@ -87,7 +96,10 @@ export function strictConvertDeclarationValue(
   valuesMap: Record<string, string>
 ) {
   const key = value.trim();
-  const mapped = getOwn(valuesMap, key) || getOwn(valuesMap, key.toLowerCase());
+  // keywords are case-insensitive, but the names of custom properties aren't
+  const mapped =
+    getOwn(valuesMap, key) ||
+    (key.includes('--') ? undefined : getOwn(valuesMap, key.toLowerCase()));
 
   return mapped ? [mapped] : [];
 }
@@ -111,12 +123,14 @@ function convertColorDeclarationValue(
 const DIMENSION_REGEXP = /^([+-]?(?:\d*\.)?\d+)([a-z]+)$/i;
 
 /**
- * Units are case-insensitive in CSS, but Tailwind recognizes only lowercase ones in arbitrary values.
+ * Units are case-insensitive in CSS, but Tailwind recognizes only lowercase ones in arbitrary values
+ * (and `Q`).
  */
 function lowerCaseUnit(value: string) {
   const match = value.trim().match(DIMENSION_REGEXP);
+  const unit = match?.[2].toLowerCase();
 
-  return match ? match[1] + match[2].toLowerCase() : value;
+  return match ? match[1] + (unit === 'q' ? 'Q' : unit) : value;
 }
 
 function convertSizeDeclarationValue(
@@ -162,12 +176,16 @@ const BORDER_STYLES = new Set([
   'outset',
 ]);
 
-const LENGTH_REGEXP = /^[+-]?(\d*\.)?\d+([a-z]+|%)?$/i;
+/** A non-negative length, a unitless one only if it's zero. */
+const BORDER_WIDTH_REGEXP = /^\+?((\d*\.)?\d+[a-z]+|(0*\.)?0+)$/i;
 const LENGTH_FUNCTION_REGEXP = /^(calc|min|max|clamp)\(/i;
+/** Numbers, percentages, strings and images, which are neither a border width nor a color. */
+const NOT_BORDER_COLOR_REGEXP =
+  /^([+-]?\.?\d|["']|(url|image-set|[a-z-]*gradient)\()/i;
 
-function isLengthLike(value: string) {
+function isBorderWidth(value: string) {
   return (
-    LENGTH_REGEXP.test(value) ||
+    BORDER_WIDTH_REGEXP.test(value) ||
     LENGTH_FUNCTION_REGEXP.test(value) ||
     ['thin', 'medium', 'thick'].includes(value.toLowerCase())
   );
@@ -202,11 +220,11 @@ export function convertBorderDeclarationToUtilities(
     if (BORDER_STYLES.has(lowerCased)) {
       if (style) return [];
       style = lowerCased;
-    } else if (isLengthLike(token)) {
+    } else if (isBorderWidth(token)) {
       if (width) return [];
       width = token;
     } else {
-      if (color) return [];
+      if (color || NOT_BORDER_COLOR_REGEXP.test(token)) return [];
       color = token;
     }
   }
@@ -276,7 +294,7 @@ export function convertBorderDeclarationToUtilities(
   // the idiomatic utilities of an invisible border don't reset all its parts
   let partial = false;
 
-  if (!style || style === 'none') {
+  if ((!style || style === 'none') && !config.strict) {
     const hasOnlyStyle = (!width || isZeroValue(width)) && !color;
 
     if (hasOnlyStyle) {
@@ -308,7 +326,7 @@ export function convertBorderDeclarationToUtilities(
     // sets a zero width and a theme color by default.
     utilities = [
       convertWidth(width ?? 'medium'),
-      convertStyle(style),
+      convertStyle(style ?? 'none'),
       convertColor(color ?? 'currentColor'),
     ];
   }
@@ -927,22 +945,21 @@ type DeclarationUtilitiesConverter = (
   config: ResolvedTailwindConverterConfig
 ) => ConvertedUtility[];
 
-/**
- * Converters of shorthands whose utilities stand for different longhand properties.
- * Every other converter produces utilities that stand for all longhands of the declaration.
- */
 const FONT_SMOOTHING_PROPS = [
   '-webkit-font-smoothing',
   '-moz-osx-font-smoothing',
 ];
 
 /** Font smoothing utilities set both vendor properties. */
-const convertFontSmoothingDeclarationToUtilities: DeclarationUtilitiesConverter =
+const fontSmoothingConverter =
+  (
+    property: '-webkit-font-smoothing' | '-moz-osx-font-smoothing'
+  ): DeclarationUtilitiesConverter =>
   (declaration, config) =>
     config.tailwindConfig.corePlugins.fontSmoothing
       ? strictConvertDeclarationValue(
           declaration.value,
-          UTILITIES_MAPPING['font-smoothing']
+          UTILITIES_MAPPING[property]
         ).map(className => ({ className, props: FONT_SMOOTHING_PROPS }))
       : [];
 
@@ -1022,12 +1039,16 @@ const convertBorderWidthDeclarationToUtilities: DeclarationUtilitiesConverter =
     return utilities;
   };
 
+/**
+ * Converters of declarations whose utilities stand for different longhand properties.
+ * The utilities of every other converter stand for all longhands of the declaration.
+ */
 export const DECLARATION_UTILITIES_CONVERTERS_MAPPING: Record<
   string,
   DeclarationUtilitiesConverter
 > = {
-  '-moz-osx-font-smoothing': convertFontSmoothingDeclarationToUtilities,
-  '-webkit-font-smoothing': convertFontSmoothingDeclarationToUtilities,
+  '-moz-osx-font-smoothing': fontSmoothingConverter('-moz-osx-font-smoothing'),
+  '-webkit-font-smoothing': fontSmoothingConverter('-webkit-font-smoothing'),
   border: (declaration, config) =>
     convertBorderDeclarationToUtilities(declaration.value, config, 'border'),
   'border-top': (declaration, config) =>
@@ -1097,6 +1118,21 @@ export const DECLARATION_UTILITIES_CONVERTERS_MAPPING: Record<
           false
         )
       : [],
+  'text-decoration': (declaration, config) => {
+    // the shorthand also resets the style, the color and the thickness of the line
+    if (!config.tailwindConfig.corePlugins.textDecoration || config.strict) {
+      return [];
+    }
+
+    const parsed = splitBySpaces(declaration.value);
+
+    return parsed.length === 1
+      ? strictConvertDeclarationValue(
+          parsed[0],
+          UTILITIES_MAPPING['text-decoration-line']
+        ).map(className => ({ className, props: ['text-decoration-line'] }))
+      : [];
+  },
   transition: (declaration, config) =>
     convertTransitionDeclarationToUtilities(declaration.value, config),
   // `break-normal` also resets `overflow-wrap`
@@ -1114,20 +1150,20 @@ export const DECLARATION_UTILITIES_CONVERTERS_MAPPING: Record<
 
 export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
   '-moz-osx-font-smoothing': (declaration, config) =>
-    config.tailwindConfig.corePlugins.fontSmoothing
-      ? strictConvertDeclarationValue(
-          declaration.value,
-          UTILITIES_MAPPING['font-smoothing']
-        )
-      : [],
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['-moz-osx-font-smoothing'](
+        declaration,
+        config
+      )
+    ),
 
   '-webkit-font-smoothing': (declaration, config) =>
-    config.tailwindConfig.corePlugins.fontSmoothing
-      ? strictConvertDeclarationValue(
-          declaration.value,
-          UTILITIES_MAPPING['font-smoothing']
-        )
-      : [],
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['-webkit-font-smoothing'](
+        declaration,
+        config
+      )
+    ),
 
   'accent-color': (declaration, config) =>
     config.tailwindConfig.corePlugins.accentColor
@@ -1363,9 +1399,6 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
         )
       : [],
 
-  // 'border-bottom-style': (declaration, config) =>
-  //   strictConvertDeclarationValue(declaration.value, UTILITIES_MAPPING['border-style']),
-
   'border-bottom-width': (declaration, config) =>
     config.tailwindConfig.corePlugins.borderWidth
       ? convertSizeDeclarationValue(
@@ -1414,9 +1447,6 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
         )
       : [],
 
-  // 'border-left-style': (declaration, config) =>
-  //   strictConvertDeclarationValue(declaration.value, UTILITIES_MAPPING['border-style']),
-
   'border-left-width': (declaration, config) =>
     config.tailwindConfig.corePlugins.borderWidth
       ? convertSizeDeclarationValue(
@@ -1457,9 +1487,6 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
         )
       : [],
 
-  // 'border-right-style': (declaration, config) =>
-  //   strictConvertDeclarationValue(declaration.value, UTILITIES_MAPPING['border-style']),
-
   'border-right-width': (declaration, config) =>
     config.tailwindConfig.corePlugins.borderWidth
       ? convertSizeDeclarationValue(
@@ -1472,15 +1499,35 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
         )
       : [],
 
-  'border-spacing': (declaration, config) =>
-    config.tailwindConfig.corePlugins.borderSpacing
-      ? convertSizeDeclarationValue(
-          declaration.value,
-          config.mapping.borderSpacing,
-          'border-spacing',
-          config.remInPx
-        )
-      : [],
+  'border-spacing': (declaration, config) => {
+    const values = splitBySpaces(declaration.value);
+
+    // the utilities set `border-spacing` through variables, a CSS-wide keyword would apply to them
+    if (
+      !config.tailwindConfig.corePlugins.borderSpacing ||
+      isCSSWideKeyword(declaration.value) ||
+      values.length > 2
+    ) {
+      return [];
+    }
+
+    const convert = (value: string, classPrefix: string) =>
+      convertSizeDeclarationValue(
+        value,
+        config.mapping.borderSpacing,
+        classPrefix,
+        config.remInPx
+      );
+
+    if (values.length === 2) {
+      const x = convert(values[0], 'border-spacing-x');
+      const y = convert(values[1], 'border-spacing-y');
+
+      return x.length && y.length ? [...x, ...y] : [];
+    }
+
+    return convert(declaration.value, 'border-spacing');
+  },
 
   'border-style': (declaration, config) =>
     config.tailwindConfig.corePlugins.borderStyle
@@ -1528,9 +1575,6 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
         )
       : [],
 
-  // 'border-top-style': (declaration, config) =>
-  //   strictConvertDeclarationValue(declaration.value, UTILITIES_MAPPING['border-style']),
-
   'border-top-width': (declaration, config) =>
     config.tailwindConfig.corePlugins.borderWidth
       ? convertSizeDeclarationValue(
@@ -1571,7 +1615,9 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   'box-shadow': (declaration, config) =>
-    config.tailwindConfig.corePlugins.boxShadow
+    // the utilities set `box-shadow` through variables, a CSS-wide keyword would apply to them
+    config.tailwindConfig.corePlugins.boxShadow &&
+    !isCSSWideKeyword(declaration.value)
       ? convertDeclarationValue(
           declaration.value,
           config.mapping.boxShadow,
@@ -1664,7 +1710,9 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   content: (declaration, config) =>
-    config.tailwindConfig.corePlugins.content
+    // the utilities set `content` through a variable, a CSS-wide keyword would apply to it
+    config.tailwindConfig.corePlugins.content &&
+    !isCSSWideKeyword(declaration.value)
       ? convertDeclarationValue(
           declaration.value,
           config.mapping.content,
@@ -2404,7 +2452,7 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
     config.tailwindConfig.corePlugins.breakAfter
       ? strictConvertDeclarationValue(
           declaration.value,
-          UTILITIES_MAPPING['break-after']
+          UTILITIES_MAPPING['page-break-after']
         )
       : [],
 
@@ -2412,7 +2460,7 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
     config.tailwindConfig.corePlugins.breakBefore
       ? strictConvertDeclarationValue(
           declaration.value,
-          UTILITIES_MAPPING['break-before']
+          UTILITIES_MAPPING['page-break-before']
         )
       : [],
 
@@ -2420,7 +2468,7 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
     config.tailwindConfig.corePlugins.breakInside
       ? strictConvertDeclarationValue(
           declaration.value,
-          UTILITIES_MAPPING['break-inside']
+          UTILITIES_MAPPING['page-break-inside']
         )
       : [],
 
@@ -2663,24 +2711,13 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
         )
       : [],
 
-  'text-decoration': (declaration, config) => {
-    if (!config.tailwindConfig.corePlugins.textDecoration) {
-      return [];
-    }
-
-    // the shorthand also resets the style, the color and the thickness of the line
-    if (config.strict) {
-      return [];
-    }
-
-    const parsed = splitBySpaces(declaration.value);
-    return parsed.length === 1
-      ? strictConvertDeclarationValue(
-          parsed[0],
-          UTILITIES_MAPPING['text-decoration-line']
-        )
-      : [];
-  },
+  'text-decoration': (declaration, config) =>
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['text-decoration'](
+        declaration,
+        config
+      )
+    ),
 
   'text-decoration-color': (declaration, config) =>
     config.tailwindConfig.corePlugins.textDecorationColor

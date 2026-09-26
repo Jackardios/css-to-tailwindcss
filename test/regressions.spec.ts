@@ -1,3 +1,5 @@
+import postcss, { Document } from 'postcss';
+
 import {
   TailwindConverter,
   TailwindConverterConfig,
@@ -5,7 +7,7 @@ import {
 import { convert, normalizeCSS } from './helpers/convert';
 
 /**
- * Regression tests for the issues found by the audit, the IDs refer to the audit report.
+ * Regression tests for the bugs of 1.0.6 (the IDs only tell the cases apart).
  * Every conversion result is also compiled by Tailwind to make sure that all classes exist.
  */
 describe('regressions', () => {
@@ -1038,17 +1040,183 @@ describe('regressions', () => {
     });
 
     it('keeps deeply nested values and handles long whitespace', async () => {
-      const deep = 'calc('.repeat(3000) + '1px' + ')'.repeat(3000);
+      // deep enough to overflow the stack of the value parser
+      const deep = 'calc('.repeat(100000) + '1px' + ')'.repeat(100000);
       const spaces = ' '.repeat(100000);
       const converter = new TailwindConverter({
         tailwindConfig: { content: [] },
       });
 
-      await expect(
-        converter.convertCSS(
-          `.a { margin: ${deep}; border: ${deep}; color: a${spaces}b; padding: var(--a${spaces}) }`
-        )
-      ).resolves.toBeDefined();
+      const { convertedRoot } = await converter.convertCSS(
+        `.a { margin: ${deep}; border: ${deep}; color: a${spaces}b; padding: var(--a${spaces}) }`
+      );
+
+      expect(convertedRoot.toString()).toBe(
+        `.a {\n @apply text-[a_b] p-[var(--a_)];\n margin: ${deep};\n border: ${deep}\n}`
+      );
+    });
+
+    it('handles deeply nested at-rules and rules', async () => {
+      const depth = 3000;
+      const converter = new TailwindConverter({
+        tailwindConfig: { content: [] },
+      });
+      const nested = (open: string, content: string) =>
+        open.repeat(depth) + content + '}'.repeat(depth);
+
+      const media = await converter.convertCSS(
+        nested('@media (min-width: 1px) {', '.a:hover { color: red }')
+      );
+      const rules = await converter.convertCSS(nested('.a {', 'color: red'));
+
+      expect(media.nodes.map(node => node.tailwindClasses)).toEqual([
+        ['hover:text-[red]'],
+      ]);
+      expect(rules.nodes.map(node => node.tailwindClasses)).toEqual([
+        ['text-[red]'],
+      ]);
+    });
+
+    it('moves utilities over a limited number of rules', async () => {
+      const converter = new TailwindConverter({
+        tailwindConfig: { content: [] },
+      });
+      const convertWithRulesBetween = async (count: number) => {
+        const between = Array.from(
+          { length: count },
+          (_, index) => `.b${index} { top: 0 }`
+        ).join(' ');
+        const { nodes } = await converter.convertCSS(
+          `.a { color: red } ${between} .a:hover { color: blue }`
+        );
+
+        return nodes
+          .filter(node => node.rule.selector === '.a')
+          .map(node => node.tailwindClasses);
+      };
+
+      expect(await convertWithRulesBetween(10)).toEqual([
+        ['text-[red]', 'hover:text-[blue]'],
+      ]);
+      expect(await convertWithRulesBetween(1000)).toEqual([
+        ['text-[red]'],
+        ['hover:text-[blue]'],
+      ]);
+    });
+
+    it('removes empty containers in a document', () => {
+      const converter = new (class extends TailwindConverter {
+        clean(root: Document) {
+          this.cleanRaws(root);
+        }
+      })();
+      const document = postcss.document({
+        nodes: [postcss.parse('@media print { .a {} }')],
+      });
+
+      converter.clean(document);
+
+      expect(document.toString()).toBe('');
+    });
+  });
+
+  describe('third review', () => {
+    it.each<[string, string, string, Partial<TailwindConverterConfig>?]>([
+      [
+        'converts only the valid font smoothing values of each property',
+        '.a { -webkit-font-smoothing: grayscale } .b { -moz-osx-font-smoothing: antialiased } ' +
+          '.c { -webkit-font-smoothing: antialiased } .d { -moz-osx-font-smoothing: grayscale }',
+        '.a { -webkit-font-smoothing: grayscale } .b { -moz-osx-font-smoothing: antialiased } ' +
+          '.c { @apply antialiased } .d { @apply antialiased }',
+      ],
+      [
+        'keeps the Q unit uppercase',
+        '.a { font-size: 4Q }',
+        '.a { @apply text-[4Q] }',
+      ],
+      [
+        'leaves invalid single-token borders as is',
+        '.a { border: 10% } .b { border: -4px } .c { border: 1 } .d { border: "a b" } .e { border: 1px url(a.png) }',
+        '.a { border: 10% } .b { border: -4px } .c { border: 1 } .d { border: "a b" } .e { border: 1px url(a.png) }',
+      ],
+      [
+        'converts invisible borders exactly with strict',
+        '.a { border: none } .b { border-top: none }',
+        '.a { @apply border-[medium] border-none border-current } .b { border-top: none }',
+        { strict: true },
+      ],
+      [
+        'leaves CSS-wide keywords of utilities setting variables as is',
+        '.a { box-shadow: revert-layer; border-spacing: inherit; content: unset }',
+        '.a { box-shadow: revert-layer; border-spacing: inherit; content: unset }',
+      ],
+      [
+        'converts border-spacing with two values',
+        '.a { border-spacing: 2px 4px }',
+        '.a { @apply border-spacing-x-0.5 border-spacing-y-1 }',
+      ],
+      [
+        'names nested DEFAULT colors after their group',
+        '.a { color: #123456 }',
+        '.a { @apply text-primary }',
+        {
+          tailwindConfig: {
+            content: [],
+            theme: { extend: { colors: { primary: { DEFAULT: '#123456' } } } },
+          },
+        },
+      ],
+      [
+        'keeps strings and urls as is',
+        '.a::before { content: ", " } .b { background-image: url(img/.5x.png) }',
+        '.a { @apply before:content-[",_"] } .b { @apply bg-[url(img/.5x.png)] }',
+      ],
+      [
+        'escapes whitespace that is not whitespace in CSS, which would split the class',
+        '.a::before { content: "\u2014\u00a0" }',
+        '.a { @apply before:content-["\u2014\\a0_"] }',
+      ],
+      [
+        'percent-encodes spaces in urls, which Tailwind keeps verbatim',
+        '.a { background-image: url("data:image/svg+xml,<svg viewBox=\'0 0 8 8\'/>") }',
+        '.a { @apply bg-[url("data:image/svg+xml,<svg%20viewBox=\'0%200%208%208\'/>")] }',
+      ],
+      [
+        'lowercases the names of arbitrary properties',
+        '.a { COLOR: red; --Custom: 1 }',
+        '.a { @apply [color:red] [--Custom:1] }',
+        { arbitraryPropertiesIsEnabled: true },
+      ],
+      [
+        'drops text-decoration overridden by text-decoration-line',
+        '.a { text-decoration: line-through; text-decoration-line: underline }',
+        '.a { @apply underline }',
+      ],
+      [
+        'converts only the values of the legacy page-break properties',
+        '.a { page-break-after: always; page-break-inside: avoid } .b { page-break-before: avoid-page }',
+        '.a { @apply break-after-page break-inside-avoid } .b { page-break-before: avoid-page }',
+      ],
+      [
+        'keeps IE hacks',
+        '.a { *display: inline; _height: 1px; zoom: 1 }',
+        '.a { @apply [zoom:1]; *display: inline; _height: 1px }',
+        { arbitraryPropertiesIsEnabled: true },
+      ],
+    ])('%s', async (_, css, expected, config = {}) => {
+      expect(await convert(css, config)).toBe(normalizeCSS(expected));
+    });
+
+    it('leaves unbalanced values as is', async () => {
+      const converter = new TailwindConverter({
+        tailwindConfig: { content: [] },
+        arbitraryPropertiesIsEnabled: true,
+      });
+      const css = '.a { margin: 1px); color: a]b; content: "a }';
+
+      const { convertedRoot } = await converter.convertCSS(css);
+
+      expect(normalizeCSS(convertedRoot.toString())).toBe(normalizeCSS(css));
     });
   });
 });

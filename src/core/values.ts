@@ -79,3 +79,32 @@ export function isSingleToken(value: string) {
 
   return nodes.length === 1 && nodes[0].type !== 'div';
 }
+
+/**
+ * Whether the value is balanced (brackets are closed in order, strings are closed), as CSS requires.
+ * Tailwind can't parse classes with unbalanced values.
+ */
+export function isBalancedValue(value: string) {
+  const brackets: string[] = [];
+  let quote: string | null = null;
+
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i];
+
+    if (char === '\\') {
+      i++;
+    } else if (quote) {
+      quote = char === quote ? null : quote;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if ('([{'.includes(char)) {
+      brackets.push(char);
+    } else if (')]}'.includes(char)) {
+      if (brackets.pop() !== '([{'[')]}'.indexOf(char)]) {
+        return false;
+      }
+    }
+  }
+
+  return !brackets.length && !quote;
+}

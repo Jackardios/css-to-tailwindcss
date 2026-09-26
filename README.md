@@ -204,7 +204,8 @@ different from the one Tailwind applies them in, `skew()` with two angles, etc.
 `rule` is the rule itself and `tailwindClasses` are the classes of its `@apply`. Declarations left as CSS are
 only in `convertedRoot`.
 
-Adjacent rules with the same selector are merged. A rule with variants (e.g. `.foo:hover` or `.foo` in a media query)
+Adjacent rules with the same selector are merged if they contain only declarations, have no variants and don't set
+the same properties. A rule with variants (e.g. `.foo:hover` or `.foo` in a media query)
 is merged into the preceding `.foo` rule if this doesn't change the result. Otherwise a new `.foo` rule is created
 in its place, so a selector may occur in `nodes` several times, e.g. `.foo:hover { color: red } .foo { display: block }`
 becomes `.foo { @apply hover:text-[red] } .foo { @apply block }`.
@@ -213,14 +214,14 @@ becomes `.foo { @apply hover:text-[red] } .foo { @apply block }`.
 
 ### TailwindConverter(options?)
 
-| Option                       | Type               | Default | Description                                                                                                                                                                                                      |
-| ---------------------------- | ------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| remInPx                      | `number` \| `null` | `null`  | `rem` in `px` unit. Set null if you don't want to convert rem to pixels                                                                                                                                          |
-| arbitraryPropertiesIsEnabled | `boolean`          | `false` | defines whether non-convertible properties should be converted as "arbitrary properties"                                                                                                                         |
-| tailwindConfig               | `Config`           | {}      | Set your tailwind config here                                                                                                                                                                                    |
-| postCSSPlugins               | `AcceptedPlugin[]` | []      | Array of acceptable postcss plugins                                                                                                                                                                              |
-| arbitraryVariants            | `boolean`          | `false` | converts `@media`/`@supports` that don't match the theme to arbitrary variants, e.g. `[@media_(max-width:_767px)]:`                                                                                              |
-| strict                       | `boolean`          | `false` | avoids utilities that don't reproduce the source declaration exactly: uses exact arbitrary values instead (e.g. `text-sm` also sets `line-height`) or leaves the declaration as CSS (e.g. `transform` functions) |
+| Option                       | Type               | Default           | Description                                                                                                                                                                                                      |
+| ---------------------------- | ------------------ | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| remInPx                      | `number` \| `null` | `null`            | `rem` in `px` unit. Set null if you don't want to convert rem to pixels                                                                                                                                          |
+| arbitraryPropertiesIsEnabled | `boolean`          | `false`           | defines whether non-convertible properties should be converted as "arbitrary properties"                                                                                                                         |
+| tailwindConfig               | `Config`           | `{ content: [] }` | Set your tailwind config here                                                                                                                                                                                    |
+| postCSSPlugins               | `AcceptedPlugin[]` | []                | Array of acceptable postcss plugins                                                                                                                                                                              |
+| arbitraryVariants            | `boolean`          | `false`           | converts `@media`/`@supports` that don't match the theme to arbitrary variants, e.g. `[@media_(max-width:_767px)]:`                                                                                              |
+| strict                       | `boolean`          | `false`           | avoids utilities that don't reproduce the source declaration exactly: uses exact arbitrary values instead (e.g. `text-sm` also sets `line-height`) or leaves the declaration as CSS (e.g. `transform` functions) |
 
 ## How it works and limitations
 
@@ -239,11 +240,11 @@ becomes `.foo { @apply hover:text-[red] } .foo { @apply block }`.
   the descendants.
 - `screen and (...)` is converted as `(...)`: the `screen` media type is dropped.
 - Tailwind has no per-side border styles. A side shorthand is converted only with the `solid` style
-  (e.g. `border-top: 1px solid` becomes `border-t border-solid border-t-current`), which sets `border-style: solid`
+  (e.g. `border-top: 1px solid` becomes `border-t-current border-t border-solid`), which sets `border-style: solid`
   on all sides, as the Tailwind preflight does. Other styles and `strict` leave the declaration as CSS.
-- Invisible borders are converted idiomatically: `border: none` becomes `border-none`, `border: none red` becomes
-  `border-none border-[red]` and `border-right: none` becomes `border-r-0`, which don't reset the other parts
-  of the border. They are left as CSS if the following declarations of the rule set these parts.
+- Unless `strict` is enabled, invisible borders are converted idiomatically: `border: none` becomes `border-none`,
+  `border: none red` becomes `border-none border-[red]` and `border-right: none` becomes `border-r-0`, which don't
+  reset the other parts of the border. They are left as CSS if the following declarations of the rule set these parts.
 - Shorthands reset their omitted parts, so `border: solid red` becomes `border-[medium] border-solid border-[red]`.
   `transition` doesn't reset `transition-delay` unless `strict` is enabled, and Tailwind's `transition-*` utilities
   set a default duration and timing function (e.g. `transition: all` becomes `transition-all`, which animates
@@ -255,6 +256,16 @@ becomes `.foo { @apply hover:text-[red] } .foo { @apply block }`.
   these declarations are left as CSS.
 - `@media (prefers-color-scheme: dark)` is converted to `dark:` only with `darkMode: 'media'` (default).
 - Only TailwindCSS 3.x is supported.
+
+### Extending
+
+The protected methods of `TailwindConverter` can be overridden, but an override replaces the logic behind the method:
+
+- overriding `convertRule` or `makeTailwindNode` switches to the placement of 1.0: utilities are added to the first rule
+  with the same selector, regardless of the cascade;
+- overriding `convertDeclarationToClasses` disables the checks of the side effects of utilities
+  (e.g. `text-sm` also sets `line-height`) and the exact conversion of important declarations;
+- overriding `parseSelector` converts the variants of a selector as a whole, like 1.0 did.
 
 [build-img]: https://github.com/jackardios/css-to-tailwindcss/actions/workflows/release.yml/badge.svg
 [build-url]: https://github.com/jackardios/css-to-tailwindcss/actions/workflows/release.yml

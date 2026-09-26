@@ -6,6 +6,7 @@ import postcssJs from 'postcss-js';
 
 import * as publicApi from '../src';
 import { TailwindNodesManager } from '../src/TailwindNodesManager';
+import { PSEUDOS_MAPPING } from '../src/mappings/pseudos-mapping';
 import {
   TailwindConverter,
   TailwindConverterConfig,
@@ -83,6 +84,13 @@ describe('1.x compatibility', () => {
       });
     }
   );
+
+  it('keeps the variants of the pseudo-classes mapping', () => {
+    expect(PSEUDOS_MAPPING).toMatchObject({
+      marker: 'marker',
+      selection: 'selection',
+    });
+  });
 
   it('keeps the public API', () => {
     expect(Object.keys(publicApi).sort()).toEqual(
@@ -304,7 +312,7 @@ describe('1.x compatibility', () => {
           `${id} { color: red; margin: 4px; &:hover { color: blue; } ` +
             '@media (min-width: 768px) { padding: 8px; } &::after { content: "x" } }'
         );
-        const jss = postcssJs.objectify(converted.convertedRoot);
+        const jss = postcssJs.objectify(converted.convertedRoot as Root);
 
         expect(Object.keys(jss)).toEqual([id]);
         expect(jss[id]).toEqual({
@@ -326,7 +334,7 @@ describe('1.x compatibility', () => {
         `${id} .child`,
         id,
       ]);
-      expect(postcssJs.objectify(converted.convertedRoot)).toEqual({
+      expect(postcssJs.objectify(converted.convertedRoot as Root)).toEqual({
         [id]: {
           '@apply text-[red]': true,
           '@apply hover:text-[blue]': true,
@@ -340,7 +348,7 @@ describe('1.x compatibility', () => {
       const converted = await converter.convertCSS(
         `${id} { color: red; filter: blur(1px) blur(2px); &:hover { display: -webkit-box; display: flex } }`
       );
-      const jss = postcssJs.objectify(converted.convertedRoot);
+      const jss = postcssJs.objectify(converted.convertedRoot as Root);
 
       expect(jss).toEqual({
         [id]: {

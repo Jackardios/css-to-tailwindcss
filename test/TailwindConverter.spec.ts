@@ -652,7 +652,7 @@ describe('TailwindConverter', () => {
     ]);
   });
 
-  it('should convert border width values that contain functions or variables', async () => {
+  it('should convert border width values that contain functions or variables, unless the sides are ambiguous', async () => {
     const converter = createTailwindConverter();
     const converted = await converter.convertCSS(`
       .a {

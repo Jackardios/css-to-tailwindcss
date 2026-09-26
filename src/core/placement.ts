@@ -116,18 +116,23 @@ function pseudoElementOf(variants: Variant[]) {
   return variants.find(variant => variant.pseudoElement)?.value || null;
 }
 
+/** How many preceding siblings are looked through, so that big files are converted in linear time. */
+const MAX_LOOKBEHIND = 500;
+
 /**
- * Returns the nearest preceding sibling of the node matching the predicate
- * (`node.prev()` looks the node up in the parent every time, which is slow for big files).
+ * Returns the nearest preceding sibling of the node matching the predicate.
+ * The sibling at the lookbehind limit is returned without checking, so the callers treat it
+ * as blocking: utilities are not moved further (and the ones hoisted out of at-rules are not hoisted).
  */
 function findPrecedingSibling(
   node: ChildNode,
   predicate: (sibling: ChildNode) => boolean
 ): ChildNode | null {
   const siblings = node.parent?.nodes || [];
+  const index = siblings.indexOf(node);
 
-  for (let i = siblings.indexOf(node) - 1; i >= 0; i--) {
-    if (predicate(siblings[i])) {
+  for (let i = index - 1; i >= 0; i--) {
+    if (index - i > MAX_LOOKBEHIND || predicate(siblings[i])) {
       return siblings[i];
     }
   }

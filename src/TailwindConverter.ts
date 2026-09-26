@@ -34,6 +34,7 @@ import {
 } from './mappings/declaration-converters-mapping';
 import { MEDIA_PARAMS_MAPPING } from './mappings/media-params-mapping';
 import {
+  DESCENDANT_VARIANTS,
   PSEUDOS_MAPPING,
   PSEUDO_ELEMENT_VARIANTS,
   SELECTOR_VARIANTS_ORDER,
@@ -61,6 +62,7 @@ import {
   selectorClassNames,
   stringifySelector,
 } from './core/selector';
+import { isBalancedValue } from './core/values';
 
 export interface TailwindConverterConfig {
   remInPx?: number | null;
@@ -117,6 +119,21 @@ function isPseudoElement(selector: Selector) {
   );
 }
 
+/** The longhands set by a rule, or `null` if it contains anything but declarations and comments. */
+function declaredProperties(rule: Rule) {
+  const properties = new Set<string>();
+
+  for (const child of rule.nodes) {
+    if (child.type === 'decl') {
+      longhandsOf(child.prop).forEach(property => properties.add(property));
+    } else if (child.type !== 'comment') {
+      return null;
+    }
+  }
+
+  return properties;
+}
+
 interface PlannedDeclaration {
   declaration: Declaration;
   converted: ConvertedDeclaration;
@@ -153,12 +170,26 @@ export class TailwindConverter {
     };
   }
 
-  async convertCSS(css: string) {
+  async convertCSS(css: string): Promise<{
+    nodes: ResolvedTailwindNode[];
+    convertedRoot: Document | Root;
+  }> {
     const parsed = await postcss(this.config.postCSSPlugins).process(css, {
       parser: postcssSafeParser,
       from: undefined,
       // don't load previous source maps referenced by the input
       map: false,
+    });
+
+    // IE hacks (`*zoom: 1`) are parsed with the hack in `raws.before`, which `cleanRaws` drops,
+    // so the hack is moved to the property, which isn't converted then
+    parsed.root.walkDecls(declaration => {
+      const hack = declaration.raws.before?.slice(-1);
+
+      if (hack === '*' || hack === '_') {
+        declaration.raws.before = declaration.raws.before?.slice(0, -1);
+        declaration.prop = hack + declaration.prop;
+      }
     });
 
     // the nodes `detectIndent` looks at, collected before empty rules are removed
@@ -171,10 +202,26 @@ export class TailwindConverter {
 
     // Rules are collected beforehand, since placing utilities inserts new rules into the tree
     const rules: Rule[] = [];
+    // the longhands of the rules consisting of declarations only (`null` for other rules),
+    // cached so that merging a run of rules takes linear time
+    const properties = new Map<Rule, Set<string> | null>();
+    const propertiesOf = (rule: Rule) => {
+      if (!properties.has(rule)) {
+        properties.set(rule, declaredProperties(rule));
+      }
+
+      return properties.get(rule) as Set<string> | null;
+    };
     parsed.root.walkRules((rule, index) => {
       const prev = rule.parent?.nodes[index - 1];
 
-      if (prev?.type === 'rule' && this.canMergeAdjacentRules(prev, rule)) {
+      if (
+        prev?.type === 'rule' &&
+        this.canMergeAdjacentRules(prev, rule, propertiesOf)
+      ) {
+        propertiesOf(rule)?.forEach(property =>
+          propertiesOf(prev)?.add(property)
+        );
         prev.append(rule.nodes);
         rule.remove();
       } else {
@@ -251,26 +298,27 @@ export class TailwindConverter {
    * of utilities (e.g. `line-height` of `text-sm`) are resolved as in a single rule. Rules setting
    * the same properties are not merged: the declarations would become fallbacks of each other.
    */
-  private canMergeAdjacentRules(prev: Rule, rule: Rule) {
-    const hasOnlyDeclarations = (node: Rule) =>
-      node.every(child => child.type === 'decl' || child.type === 'comment');
-    const propsOf = (node: Rule) => {
-      const props: string[] = [];
-      node.walkDecls(decl => {
-        props.push(...longhandsOf(decl.prop));
-      });
+  private canMergeAdjacentRules(
+    prev: Rule,
+    rule: Rule,
+    propertiesOf: (rule: Rule) => Set<string> | null
+  ) {
+    if (
+      normalizeSelectorKey(prev.selector) !==
+        normalizeSelectorKey(rule.selector) ||
+      !isConvertibleContext(rule) ||
+      this.resolveRuleLocation(rule).variants.length
+    ) {
+      return false;
+    }
 
-      return props;
-    };
+    const prevProperties = propertiesOf(prev);
+    const ruleProperties = propertiesOf(rule);
 
     return (
-      hasOnlyDeclarations(prev) &&
-      hasOnlyDeclarations(rule) &&
-      normalizeSelectorKey(prev.selector) ===
-        normalizeSelectorKey(rule.selector) &&
-      isConvertibleContext(rule) &&
-      !this.resolveRuleLocation(rule).variants.length &&
-      !propertiesIntersect(propsOf(prev), propsOf(rule))
+      !!prevProperties &&
+      !!ruleProperties &&
+      !propertiesIntersect(ruleProperties, prevProperties)
     );
   }
 
@@ -583,7 +631,7 @@ export class TailwindConverter {
   protected convertDeclarationToUtilities(
     declaration: Declaration
   ): ConvertedUtility[] {
-    if (!declaration.value.trim()) {
+    if (!declaration.value.trim() || !isBalancedValue(declaration.value)) {
       return [];
     }
 
@@ -616,7 +664,7 @@ export class TailwindConverter {
 
     const utilities = utilitiesConverter(declaration, config);
 
-    if (utilities.length || !this.config.arbitraryPropertiesIsEnabled) {
+    if (utilities.length || !this.canMakeArbitraryProperty(declaration)) {
       return utilities;
     }
 
@@ -631,7 +679,7 @@ export class TailwindConverter {
     declaration: Declaration,
     config: ResolvedTailwindConverterConfig
   ) {
-    if (!declaration.value.trim()) {
+    if (!declaration.value.trim() || !isBalancedValue(declaration.value)) {
       return [];
     }
 
@@ -641,15 +689,28 @@ export class TailwindConverter {
         config
       ) || [];
 
-    if (classes.length === 0 && this.config.arbitraryPropertiesIsEnabled) {
+    if (classes.length === 0 && this.canMakeArbitraryProperty(declaration)) {
       return [this.makeArbitraryProperty(declaration)];
     }
 
     return classes;
   }
 
+  private canMakeArbitraryProperty(declaration: Declaration) {
+    // not for IE hacks
+    return (
+      this.config.arbitraryPropertiesIsEnabled &&
+      !/^[*_]/.test(declaration.prop)
+    );
+  }
+
   protected makeArbitraryProperty(declaration: Declaration) {
-    return `[${declaration.prop}:${prepareArbitraryValue(declaration.value)}]`;
+    // Tailwind doesn't recognize uppercase property names, the names of custom properties are case-sensitive
+    const property = declaration.prop.startsWith('--')
+      ? declaration.prop
+      : declaration.prop.toLowerCase();
+
+    return `[${property}:${prepareArbitraryValue(declaration.value)}]`;
   }
 
   /**
@@ -1037,9 +1098,11 @@ export class TailwindConverter {
         mappingKey = `${selector.name}(${selector.data.replace(/\s+/g, '')})`;
       }
 
-      return mappingKey
-        ? getOwn<string>(PSEUDOS_MAPPING, mappingKey.toLowerCase()) || null
-        : null;
+      const variant = mappingKey
+        ? getOwn<string>(PSEUDOS_MAPPING, mappingKey.toLowerCase())
+        : undefined;
+
+      return variant && !DESCENDANT_VARIANTS.includes(variant) ? variant : null;
     }
 
     if (selector.type === 'attribute') {
@@ -1125,22 +1188,22 @@ export class TailwindConverter {
   /**
    * Removes empty rules and at-rules, including the ones that became empty after removing their children.
    */
-  protected removeEmptyContainers(container: Root | Document | Container) {
-    container.each(node => {
-      if (node.type !== 'rule' && node.type !== 'atrule') {
-        return;
+  private removeEmptyContainers(root: Root | Document) {
+    const containers: Array<Rule | AtRule> = [];
+    root.walk(node => {
+      if ((node.type === 'rule' || node.type === 'atrule') && node.nodes) {
+        containers.push(node);
       }
+    });
 
-      if (node.nodes) {
-        this.removeEmptyContainers(node);
-
-        // an empty `@layer` block still declares the order of the layer
-        if (
-          node.nodes.length === 0 &&
-          !(node.type === 'atrule' && node.name.toLowerCase() === 'layer')
-        ) {
-          node.remove();
-        }
+    // the descendants of a container are removed before it, since they follow it in the walk order
+    containers.reverse().forEach(node => {
+      // an empty `@layer` block still declares the order of the layer
+      if (
+        !node.nodes?.length &&
+        !(node.type === 'atrule' && node.name.toLowerCase() === 'layer')
+      ) {
+        node.remove();
       }
     });
   }

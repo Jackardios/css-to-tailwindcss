@@ -7,6 +7,7 @@ import type {
 import type { ConverterMapping } from '../types/ConverterMapping';
 
 import { colord } from 'colord';
+import valueParser from 'postcss-value-parser';
 import { buildMediaQueryByScreen } from './buildMediaQueryByScreen';
 import { flattenObject } from './flattenObject';
 import { remValueToPx } from './remValueToPx';
@@ -14,8 +15,46 @@ import { normalizeNumbersInString } from './normalizeNumbersInString';
 import { removeUnnecessarySpaces } from './removeUnnecessarySpaces';
 import { normalizeTimeValue } from './normalizeTimeValue';
 
+function normalizeUnquotedValue(value: string) {
+  return removeUnnecessarySpaces(normalizeNumbersInString(value)).replace(
+    /[ \t\n\r\f]+/g,
+    ' '
+  );
+}
+
+/**
+ * Normalizes numbers and whitespace, keeping strings and URLs as is. Whitespace in URLs is percent-encoded,
+ * as browsers do: Tailwind keeps URLs of arbitrary values verbatim, so they can't contain `_` for a space.
+ */
 export function normalizeValue(value: string) {
-  return removeUnnecessarySpaces(normalizeNumbersInString(value));
+  if (!/["']|url\(/i.test(value)) {
+    return normalizeUnquotedValue(value);
+  }
+
+  let result = '';
+  let end = 0;
+  valueParser(value).walk(node => {
+    const isUrl =
+      node.type === 'function' && node.value.toLowerCase() === 'url';
+
+    if (node.type !== 'string' && !isUrl) {
+      return;
+    }
+
+    const url = isUrl ? node.nodes[0] : null;
+    result +=
+      normalizeUnquotedValue(value.slice(end, node.sourceIndex)) +
+      (url
+        ? `${node.value}(${value
+            .slice(url.sourceIndex, url.sourceEndIndex)
+            .replace(/\s/g, encodeURIComponent)})`
+        : value.slice(node.sourceIndex, node.sourceEndIndex));
+    end = node.sourceEndIndex;
+
+    return false;
+  });
+
+  return result + normalizeUnquotedValue(value.slice(end));
 }
 
 export function normalizeColorValue(colorValue: string) {
@@ -148,7 +187,11 @@ function convertScreens(screens: ScreensConfig) {
 }
 
 function convertColors(colors: RecursiveKeyValuePair) {
-  const flatColors = flattenObject(colors);
+  // as in Tailwind, a nested `DEFAULT` color is named after its group (`primary: { DEFAULT }` is `primary`)
+  const flatColors: Record<string, any> = {};
+  Object.entries(flattenObject(colors)).forEach(([key, value]) => {
+    flatColors[key.replace(/-DEFAULT\b/g, '')] = value;
+  });
 
   return mapThemeTokens(flatColors, (colorValue: string) => {
     colorValue = colorValue?.toString();

@@ -35,11 +35,15 @@ export const PSEUDOS_MAPPING = {
   after: 'after',
   'first-letter': 'first-letter',
   'first-line': 'first-line',
-  // `marker` and `selection` aren't mapped: Tailwind's variants also style the descendants (`& *::marker`)
+  marker: 'marker',
+  selection: 'selection',
   'file-selector-button': 'file',
   placeholder: 'placeholder',
   backdrop: 'backdrop',
 };
+
+/** Variants that also style the descendants (`& *::marker`), so selectors aren't converted to them. */
+export const DESCENDANT_VARIANTS = ['marker', 'selection'];
 
 /** Variants that style a pseudo-element instead of the element itself. */
 export const PSEUDO_ELEMENT_VARIANTS = [
