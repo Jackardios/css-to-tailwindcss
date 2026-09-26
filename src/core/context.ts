@@ -1,9 +1,9 @@
 import type { AtRule, Container, Document, Rule } from 'postcss';
 
 /**
- * At-rules whose nested rules style elements the same way as top-level rules.
- * Rules inside any other at-rule (`@keyframes`, `@font-face`, `@page`, …) are not selectors of elements
- * and must never be converted.
+ * At-rules whose nested rules are converted like top-level rules (Tailwind's layers are handled below).
+ * Rules in other at-rules are left as is: some don't select elements (`@keyframes`, `@font-face`, `@page`),
+ * others change how their rules apply (`@scope`, `@starting-style`, native `@layer`).
  */
 const STYLE_CONTAINER_AT_RULES = new Set(['media', 'supports', 'container']);
 

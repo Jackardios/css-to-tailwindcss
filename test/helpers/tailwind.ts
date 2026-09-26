@@ -73,19 +73,25 @@ export function collectClasses(result: ConvertResult) {
 }
 
 /**
- * Checks that every class of the conversion result exists (one by one to name the invalid one)
- * and that the whole converted CSS compiles.
+ * Checks that every class of the conversion result exists and that the whole converted CSS compiles.
+ * The classes are compiled together, and one by one only to name the invalid one.
  */
 export async function expectValidConversion(
   result: ConvertResult,
   tailwindConfig: Partial<Config> = {}
 ) {
-  for (const className of collectClasses(result)) {
-    await expect(
-      compileOutput(`.x { @apply ${className}; }`, tailwindConfig).then(
-        () => className
-      )
-    ).resolves.toBe(className);
+  const classes = collectClasses(result);
+  const compileClasses = (classNames: string[]) =>
+    compileOutput(`.x { @apply ${classNames.join(' ')}; }`, tailwindConfig);
+
+  if (classes.length) {
+    await compileClasses(classes).catch(async () => {
+      for (const className of classes) {
+        await expect(
+          compileClasses([className]).then(() => className)
+        ).resolves.toBe(className);
+      }
+    });
   }
 
   await compileOutput(result.convertedRoot.toString(), tailwindConfig);

@@ -289,7 +289,7 @@ export const UTILITIES_MAPPING = {
     scroll: 'overflow-scroll',
   },
   'overflow-wrap': {
-    // normal: 'break-normal',
+    // `break-normal` also resets `word-break`
     'break-word': 'break-words',
   },
   'overflow-x': {

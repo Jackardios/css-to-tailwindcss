@@ -70,7 +70,7 @@ export function selectorClassNames(rawSelector: string) {
 /**
  * Escapes a CSS identifier (https://drafts.csswg.org/cssom/#serialize-an-identifier).
  */
-export function escapeIdentifier(value: string) {
+function escapeIdentifier(value: string) {
   let result = '';
 
   for (let i = 0; i < value.length; i++) {
@@ -176,7 +176,7 @@ function stringifyTokens(selectors: Selector[][]): string {
 
 /**
  * Turns a parsed selector back into a string. Unlike `stringify` from css-what,
- * escapes identifiers properly (e.g. `.w-1\/2`, `.\32xl`).
+ * escapes identifiers properly (e.g. `.w-1\/2`, `.\32 xl`).
  * Returns `null` if the result can't be parsed back to the same selector.
  */
 export function stringifySelector(selectors: Selector[][]): string | null {

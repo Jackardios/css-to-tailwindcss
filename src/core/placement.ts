@@ -79,7 +79,7 @@ interface Target {
   utilities: PlacedUtility[];
   /**
    * Utilities by the properties they stand for, one per group of utilities that
-   * `canFollow` treats the same way (the same variants and kind), to find overlapping ones quickly.
+   * `canFollow` treats the same way (the same variants, arbitrary property or not), to find overlapping ones quickly.
    */
   utilitiesByProp: Map<string, Map<string, PlacedUtility>>;
 }
@@ -121,8 +121,8 @@ const MAX_LOOKBEHIND = 500;
 
 /**
  * Returns the nearest preceding sibling of the node matching the predicate.
- * The sibling at the lookbehind limit is returned without checking, so the callers treat it
- * as blocking: utilities are not moved further (and the ones hoisted out of at-rules are not hoisted).
+ * The sibling at the lookbehind limit is returned without checking the predicate, so it blocks
+ * moving utilities further unless the caller checks it itself (the siblings in between were checked).
  */
 function findPrecedingSibling(
   node: ChildNode,
@@ -203,10 +203,11 @@ export class UtilitiesPlacement {
     return key;
   }
 
+  /**
+   * Returns `false` if the utilities with variants can't be moved to a base rule;
+   * the caller then places them into the source rule without variants.
+   */
   place(request: PlacementRequest): boolean {
-    // the converted declarations were removed from the rule
-    this.invalidateEffectiveProps(request.rule);
-
     const utilities = this.toPlacedUtilities(request);
 
     if (!utilities.length) {

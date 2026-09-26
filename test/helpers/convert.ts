@@ -18,14 +18,8 @@ export function normalizeCSS(css: string) {
     .trim();
 }
 
-/**
- * Converts the CSS, checks that every produced class exists in Tailwind and returns the normalized output.
- */
-export async function convert(
-  css: string,
-  config: Partial<TailwindConverterConfig> = {}
-) {
-  const converter = new TailwindConverter({
+export function createConverter(config: Partial<TailwindConverterConfig> = {}) {
+  return new TailwindConverter({
     remInPx: 16,
     ...config,
     tailwindConfig: {
@@ -33,7 +27,16 @@ export async function convert(
       ...(config.tailwindConfig || {}),
     } as Config,
   });
-  const result = await converter.convertCSS(css);
+}
+
+/**
+ * Converts the CSS, checks that every produced class exists in Tailwind and returns the normalized output.
+ */
+export async function convert(
+  css: string,
+  config: Partial<TailwindConverterConfig> = {}
+) {
+  const result = await createConverter(config).convertCSS(css);
 
   await expectValidConversion(result, config.tailwindConfig);
 

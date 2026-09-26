@@ -13,7 +13,7 @@ import { flattenObject } from './flattenObject';
 import { remValueToPx } from './remValueToPx';
 import { normalizeNumbersInString } from './normalizeNumbersInString';
 import { removeUnnecessarySpaces } from './removeUnnecessarySpaces';
-import { normalizeTimeValue } from './normalizeTimeValue';
+import { normalizeTimeValue } from '../core/values';
 
 function normalizeUnquotedValue(value: string) {
   return removeUnnecessarySpaces(normalizeNumbersInString(value)).replace(
@@ -23,8 +23,9 @@ function normalizeUnquotedValue(value: string) {
 }
 
 /**
- * Normalizes numbers and whitespace, keeping strings and URLs as is. Whitespace in URLs is percent-encoded,
- * as browsers do: Tailwind keeps URLs of arbitrary values verbatim, so they can't contain `_` for a space.
+ * Normalizes numbers and whitespace outside strings and `url()`. Strings are kept as is, whitespace in URLs
+ * is percent-encoded, as browsers do: Tailwind keeps URLs of arbitrary values verbatim, so `_` can't stand
+ * for a space there.
  */
 export function normalizeValue(value: string) {
   if (!/["']|url\(/i.test(value)) {
@@ -230,8 +231,8 @@ function convertOtherThemeTokens(tokens: KeyValuePair | null | undefined) {
     : tokens;
 }
 
+// Tailwind generates no utility for `DEFAULT` of these keys (e.g. `border` sets the default width, not the color)
 const THEME_KEYS_WITHOUT_DEFAULT_UTILITY = [
-  // `border` sets the default width, `border-{color}` utilities don't include `DEFAULT`
   'borderColor',
   'divideColor',
   'ringColor',
@@ -257,7 +258,6 @@ export function converterMappingByTailwindTheme(
     let themeItem = (resolvedTailwindTheme as any)[key];
 
     if (THEME_KEYS_WITHOUT_DEFAULT_UTILITY.includes(key) && themeItem) {
-      // Tailwind doesn't generate a utility for the `DEFAULT` value of these keys
       themeItem = { ...themeItem };
       delete themeItem.DEFAULT;
     }

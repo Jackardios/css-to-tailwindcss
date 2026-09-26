@@ -42,10 +42,16 @@ export const PSEUDOS_MAPPING = {
   backdrop: 'backdrop',
 };
 
-/** Variants that also style the descendants (`& *::marker`), so selectors aren't converted to them. */
+/**
+ * Variants that also style the descendants (`& *::marker`), so selectors aren't converted to them.
+ * @internal
+ */
 export const DESCENDANT_VARIANTS = ['marker', 'selection'];
 
-/** Variants that style a pseudo-element instead of the element itself. */
+/**
+ * Variants that style a pseudo-element instead of the element itself.
+ * @internal
+ */
 export const PSEUDO_ELEMENT_VARIANTS = [
   'first-letter',
   'first-line',
@@ -61,6 +67,7 @@ export const PSEUDO_ELEMENT_VARIANTS = [
 /**
  * The order in which Tailwind 3 emits rules of single-selector variants of equal specificity.
  * A rule of a variant later in this list overrides a rule of an earlier one.
+ * @internal
  */
 export const SELECTOR_VARIANTS_ORDER = [
   'first',

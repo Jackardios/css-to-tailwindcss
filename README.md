@@ -20,7 +20,7 @@
 - the ability to set your own TailwindCSS configuration
 - colors are matched regardless of the format used
 - rem is converted to px (it is possible to configure the rem size)
-- non-convertible CSS declarations are simply skipped
+- non-convertible CSS declarations are left as CSS
 - [ambiguities](https://tailwindcss.com/docs/adding-custom-styles#resolving-ambiguities) when using css variables are resolved automatically
 
 ## Install
@@ -252,20 +252,27 @@ becomes `.foo { @apply hover:text-[red] } .foo { @apply block }`.
 - Important declarations are converted like with `strict`, since the side effects of important utilities would
   override the other declarations of the rule (e.g. `font-size: 14px !important` becomes `!text-[length:14px]`).
 - `transform`, `filter` and `backdrop-filter` functions are converted to Tailwind utilities, which compose with the
-  functions set by other rules (e.g. `rotate-45 hover:translate-x-1` keeps the rotation on hover). With `strict`
-  these declarations are left as CSS.
+  functions set by other rules (e.g. `rotate-45 hover:translate-x-1` keeps the rotation on hover). The same goes for
+  `touch-action`, `font-variant-numeric` and `scroll-snap-type` keywords (e.g. `touch-pan-x hover:touch-pan-y`
+  gives `pan-x pan-y` on hover). With `strict` these declarations are left as CSS, except for the keywords
+  that don't compose (e.g. `touch-action: none`).
 - `@media (prefers-color-scheme: dark)` is converted to `dark:` only with `darkMode: 'media'` (default).
 - Only TailwindCSS 3.x is supported.
 
 ### Extending
 
-The protected methods of `TailwindConverter` can be overridden, but an override replaces the logic behind the method:
+The protected methods of `TailwindConverter` can be overridden:
 
-- overriding `convertRule` or `makeTailwindNode` switches to the placement of 1.0: utilities are added to the first rule
-  with the same selector, regardless of the cascade;
-- overriding `convertDeclarationToClasses` disables the checks of the side effects of utilities
-  (e.g. `text-sm` also sets `line-height`) and the exact conversion of important declarations;
-- overriding `parseSelector` converts the variants of a selector as a whole, like 1.0 did.
+- `convertDeclarationToClasses` converts a declaration to classes. Classes that the converter itself doesn't return
+  for the declaration are assumed to set only the declared property;
+- `convertSelectorToVariant`, `convertMediaParamsToVariants` and `convertSupportsParamsToVariant` convert a part of
+  a selector, `@media` or `@supports` to variants;
+- `parseSelector` splits a selector into the base selector and the class prefix of its variants. Overriding it
+  converts the variants of a selector as a whole, like 1.0 did;
+- overriding the deprecated `convertRule` or `makeTailwindNode` switches to the placement of 1.0: utilities are added
+  to the first rule with the same selector, regardless of the cascade.
+
+The package root is the public API. Modules under `lib/core/` and exports marked `@internal` may change in any release.
 
 [build-img]: https://github.com/jackardios/css-to-tailwindcss/actions/workflows/release.yml/badge.svg
 [build-url]: https://github.com/jackardios/css-to-tailwindcss/actions/workflows/release.yml

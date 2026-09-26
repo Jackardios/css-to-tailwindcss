@@ -30,7 +30,7 @@ export function isUnresolvedTailwindNode(
 }
 
 /**
- * @deprecated Utilities are placed by `UtilitiesPlacement` from `core/placement`, this class is kept for backward compatibility.
+ * @deprecated Not used by the converter since 1.1, kept for backward compatibility.
  */
 export class TailwindNodesManager {
   protected nodesMap: Map<string, ResolvedTailwindNode>;

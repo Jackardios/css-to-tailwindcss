@@ -15,7 +15,7 @@ import { normalizeCSS } from './helpers/convert';
 import { collectClasses, expectValidConversion } from './helpers/tailwind';
 
 /**
- * Runtime exports of every module of the last 1.x release: consumers may import them from `lib/*`.
+ * Runtime exports of every module of 1.0.6: consumers may import them from `lib/*`.
  */
 const MODULE_EXPORTS: Record<string, string[]> = {
   TailwindConverter: ['DEFAULT_CONVERTER_CONFIG', 'TailwindConverter'],
@@ -73,7 +73,7 @@ const PROTECTED_METHODS = [
   'convertSupportsParamsToClassPrefix',
 ];
 
-describe('1.x compatibility', () => {
+describe('1.0 compatibility', () => {
   it.each(Object.entries(MODULE_EXPORTS))(
     'keeps the exports of %s',
     (modulePath, exportNames) => {
@@ -148,7 +148,7 @@ describe('1.x compatibility', () => {
     });
   });
 
-  describe('subclasses overriding the 1.x methods', () => {
+  describe('subclasses overriding the 1.0 methods', () => {
     const css =
       '.a { color: red } .a:hover { color: blue } .g:hover .a { color: green } ' +
       '@media (min-width: 768px) { .a { margin: 8px } } ' +
@@ -236,6 +236,71 @@ describe('1.x compatibility', () => {
           }
         },
         '.a{@apply text-[red] custom hover:text-[blue] hover:custom md:m-2 md:custom supports-[display:grid]:grid supports-[display:grid]:custom}.g:hover .a{@apply text-[green] custom}',
+      ],
+    ];
+
+    it.each(subclasses)(
+      'uses the overridden %s',
+      async (_, Converter, expected) => {
+        const result = await new Converter({ remInPx: 16 }).convertCSS(css);
+
+        expect(normalizeCSS(result.convertedRoot.toString())).toBe(expected);
+      }
+    );
+  });
+
+  it('keeps the side effects of classes returned by an overridden convertDeclarationToClasses', async () => {
+    class CustomConverter extends TailwindConverter {
+      protected convertDeclarationToClasses(declaration: Declaration) {
+        return super.convertDeclarationToClasses(declaration);
+      }
+    }
+    const css =
+      '.a { font-size: .875rem !important; line-height: 2 } .b { border-top: 1px solid red; border-bottom-style: dashed }';
+
+    const result = await new CustomConverter({ remInPx: 16 }).convertCSS(css);
+
+    expect(normalizeCSS(result.convertedRoot.toString())).toBe(
+      normalizeCSS(
+        '.a { @apply !text-[length:0.875rem] leading-loose } .b { border-top: 1px solid red; border-bottom-style: dashed }'
+      )
+    );
+  });
+
+  describe('subclasses overriding the variant methods', () => {
+    const css =
+      '.a:hover { color: blue } @media (min-width: 768px) { .a { margin: 8px } } ' +
+      '@supports (display: grid) { .a { display: grid } }';
+
+    const subclasses: Array<[string, typeof TailwindConverter, string]> = [
+      [
+        'convertSelectorToVariant',
+        class extends TailwindConverter {
+          protected convertSelectorToVariant(selector: Selector) {
+            return selector.type === 'pseudo' && selector.name === 'hover'
+              ? 'hocus'
+              : super.convertSelectorToVariant(selector);
+          }
+        },
+        '.a{@apply hocus:text-[blue] md:m-2 supports-[display:grid]:grid}',
+      ],
+      [
+        'convertMediaParamsToVariants',
+        class extends TailwindConverter {
+          protected convertMediaParamsToVariants() {
+            return ['tablet'];
+          }
+        },
+        '.a{@apply hover:text-[blue] tablet:m-2 supports-[display:grid]:grid}',
+      ],
+      [
+        'convertSupportsParamsToVariant',
+        class extends TailwindConverter {
+          protected convertSupportsParamsToVariant() {
+            return 'grid-ok';
+          }
+        },
+        '.a{@apply hover:text-[blue] md:m-2 grid-ok:grid}',
       ],
     ];
 

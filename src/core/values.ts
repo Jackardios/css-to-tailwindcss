@@ -1,5 +1,15 @@
 import valueParser from 'postcss-value-parser';
 
+const CSS_WIDE_KEYWORDS = [
+  'inherit',
+  'initial',
+  'unset',
+  'revert',
+  'revert-layer',
+];
+
+const TIME_REGEXP = /^[+-]?(\d*\.)?\d+(m?s)$/i;
+
 export interface CSSFunction {
   name: string;
   args: string[];
@@ -30,7 +40,7 @@ export function splitByTopLevelCommas(value: string): string[] {
 /**
  * Splits a value by top-level whitespace, keeping functions and strings intact,
  * e.g. `1px solid rgb(0, 0, 0)` → ['1px', 'solid', 'rgb(0, 0, 0)'].
- * Top-level dividers (`,` and `/`) become separate items.
+ * Top-level dividers (`,`, `/` and `:`) become separate items.
  */
 export function splitBySpaces(value: string): string[] {
   return valueParser(value)
@@ -107,4 +117,41 @@ export function isBalancedValue(value: string) {
   }
 
   return !brackets.length && !quote;
+}
+
+export function isCSSWideKeyword(value: string) {
+  return CSS_WIDE_KEYWORDS.includes(value.trim().toLowerCase());
+}
+
+export function isTimeValue(value: string) {
+  return TIME_REGEXP.test(value.trim());
+}
+
+/** Converts `0.3s` to `300ms` so that equal durations match regardless of the unit. */
+export function normalizeTimeValue(value: string) {
+  const trimmed = value.trim();
+  const match = trimmed.match(TIME_REGEXP);
+
+  if (!match || match[2].toLowerCase() !== 's') {
+    return trimmed;
+  }
+
+  return `${Math.round(parseFloat(trimmed) * 100000) / 100}ms`;
+}
+
+/**
+ * Escapes a value for an arbitrary value or variant: Tailwind reads `_` as a space and `\_` as `_`,
+ * and keeps other backslashes as is. Characters that are whitespace in JavaScript but not in CSS
+ * (e.g. a no-break space) would split the class in `@apply`, so they become CSS escapes (`\a0 `).
+ */
+export function escapeArbitraryValue(value: string) {
+  return value.replace(/[_\s]/g, match => {
+    if (match === '_') {
+      return '\\_';
+    }
+
+    return /[ \t\n\r\f]/.test(match)
+      ? '_'
+      : `\\${match.charCodeAt(0).toString(16)}_`;
+  });
 }

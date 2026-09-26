@@ -8,33 +8,18 @@ import {
   normalizeValue,
 } from '../utils/converterMappingByTailwindTheme';
 import {
+  escapeArbitraryValue,
   hasTopLevelDivider,
+  isCSSWideKeyword,
   isSingleToken,
+  isTimeValue,
+  normalizeTimeValue,
   parseFunctionList,
   splitBySpaces,
   splitByTopLevelCommas,
 } from '../core/values';
+import { getOwn } from '../core/getOwn';
 import { isCSSVariable } from '../utils/isCSSVariable';
-import { getOwn } from '../utils/getOwn';
-import { isCSSWideKeyword } from '../utils/isCSSWideKeyword';
-import { isTimeValue, normalizeTimeValue } from '../utils/normalizeTimeValue';
-
-/**
- * Escapes a value for an arbitrary value or variant: Tailwind reads `_` as a space and `\_` as `_`,
- * and keeps other backslashes as is. Characters that are whitespace in JavaScript but not in CSS
- * (e.g. a no-break space) would split the class in `@apply`, so they become CSS escapes (`\a0 `).
- */
-export function escapeArbitraryValue(value: string) {
-  return value.replace(/[_\s]/g, match => {
-    if (match === '_') {
-      return '\\_';
-    }
-
-    return /[ \t\n\r\f]/.test(match)
-      ? '_'
-      : `\\${match.charCodeAt(0).toString(16)}_`;
-  });
-}
 
 export function prepareArbitraryValue(value: string) {
   return escapeArbitraryValue(normalizeValue(value));
@@ -198,7 +183,7 @@ function borderLonghands(part: 'width' | 'style' | 'color', side?: BorderSide) {
 /**
  * Converts `border` and `border-{side}` shorthands. The value is converted entirely or not at all.
  */
-export function convertBorderDeclarationToUtilities(
+function convertBorderDeclarationToUtilities(
   value: string,
   config: ResolvedTailwindConverterConfig,
   classPrefix: string,
@@ -340,6 +325,11 @@ export function convertBorderDeclarationToUtilities(
   );
 }
 
+/** The longhand of a side, e.g. `margin-top`. `inset` sets the `top`/`right`/`bottom`/`left` properties. */
+function sideProperty(property: string, side: string) {
+  return property === 'inset' ? side : `${property}-${side}`;
+}
+
 function parseComposedSpacingValue(value: string) {
   const values = splitBySpaces(value);
 
@@ -370,10 +360,10 @@ interface ComposedSpacingMapping {
 }
 
 /**
- * Converts `margin`/`padding`/`scroll-margin`/`scroll-padding` shorthands to one utility per side
- * (they are merged back by `reduceTailwindClasses`). The value is converted entirely or not at all.
+ * Converts `margin`/`padding`/`scroll-margin`/`scroll-padding`/`inset` shorthands to one utility
+ * per side (they are merged back by `reduceTailwindClasses`). The value is converted entirely or not at all.
  */
-export function convertComposedSpacingDeclarationToUtilities(
+function convertComposedSpacingDeclarationToUtilities(
   value: string,
   mapping: ComposedSpacingMapping,
   remInPx: number | null | undefined,
@@ -395,7 +385,7 @@ export function convertComposedSpacingDeclarationToUtilities(
       supportsNegativeValues
     ).map(className => ({
       className,
-      props: BORDER_SIDES.map(side => `${property}-${side}`),
+      props: BORDER_SIDES.map(side => sideProperty(property, side)),
     }));
   }
 
@@ -422,14 +412,14 @@ export function convertComposedSpacingDeclarationToUtilities(
       return [];
     }
 
-    utilities.push({ className, props: [`${property}-${side}`] });
+    utilities.push({ className, props: [sideProperty(property, side)] });
   }
 
   return utilities;
 }
 
 /**
- * @deprecated Use `convertComposedSpacingDeclarationToUtilities`.
+ * @deprecated Not used by the converter since 1.1, kept for backward compatibility.
  */
 export function convertComposedSpacingDeclarationValue(
   value: string,
@@ -461,6 +451,24 @@ function composedSpacingMapping(
   };
 }
 
+/**
+ * Converts a keyword whose utilities compose through variables with the ones set by other rules
+ * (e.g. `touch-pan-x hover:touch-pan-y` gives `pan-x pan-y` on hover). With `strict` only the utilities
+ * that set the property directly are used.
+ */
+function convertComposableKeyword(
+  value: string,
+  valuesMap: Record<string, string>,
+  directUtilities: string[],
+  config: ResolvedTailwindConverterConfig
+) {
+  const classes = strictConvertDeclarationValue(value, valuesMap);
+
+  return config.strict && !classes.every(c => directUtilities.includes(c))
+    ? []
+    : classes;
+}
+
 const TIMING_FUNCTION_KEYWORDS = new Set([
   'ease',
   'linear',
@@ -476,7 +484,7 @@ const TIMING_FUNCTION_REGEXP = /^(cubic-bezier|steps|linear)\(/i;
  * Converts a single-item `transition` shorthand. Lists of transitions are not convertible,
  * since Tailwind applies one duration/timing function/delay to all transitioned properties.
  */
-export function convertTransitionDeclarationToUtilities(
+function convertTransitionDeclarationToUtilities(
   value: string,
   config: ResolvedTailwindConverterConfig
 ): ConvertedUtility[] {
@@ -1042,6 +1050,7 @@ const convertBorderWidthDeclarationToUtilities: DeclarationUtilitiesConverter =
 /**
  * Converters of declarations whose utilities stand for different longhand properties.
  * The utilities of every other converter stand for all longhands of the declaration.
+ * @internal
  */
 export const DECLARATION_UTILITIES_CONVERTERS_MAPPING: Record<
   string,
@@ -1108,6 +1117,27 @@ export const DECLARATION_UTILITIES_CONVERTERS_MAPPING: Record<
           'scroll-margin'
         )
       : [],
+  inset: (declaration, config) =>
+    config.tailwindConfig.corePlugins.inset
+      ? convertComposedSpacingDeclarationToUtilities(
+          declaration.value,
+          {
+            // no shorthand utility: `inset-[var(--a)]` would set every side to all the values
+            top: { valuesMapping: config.mapping.inset, classPrefix: 'top' },
+            right: {
+              valuesMapping: config.mapping.inset,
+              classPrefix: 'right',
+            },
+            bottom: {
+              valuesMapping: config.mapping.inset,
+              classPrefix: 'bottom',
+            },
+            left: { valuesMapping: config.mapping.inset, classPrefix: 'left' },
+          },
+          config.remInPx,
+          'inset'
+        )
+      : [],
   'scroll-padding': (declaration, config) =>
     config.tailwindConfig.corePlugins.scrollPadding
       ? convertComposedSpacingDeclarationToUtilities(
@@ -1148,6 +1178,7 @@ export const DECLARATION_UTILITIES_CONVERTERS_MAPPING: Record<
     ),
 };
 
+/** Converters of declarations to utility classes by property name. */
 export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
   '-moz-osx-font-smoothing': (declaration, config) =>
     toClassNames(
@@ -1502,11 +1533,13 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
   'border-spacing': (declaration, config) => {
     const values = splitBySpaces(declaration.value);
 
-    // the utilities set `border-spacing` through variables, a CSS-wide keyword would apply to them
+    // The utilities set `border-spacing` through variables, a CSS-wide keyword would apply to them.
+    // `border-spacing-[var(--a)]` repeats the value for both axes, while the variable may hold two values.
     if (
       !config.tailwindConfig.corePlugins.borderSpacing ||
       isCSSWideKeyword(declaration.value) ||
-      values.length > 2
+      values.length > 2 ||
+      (values.length === 1 && isCSSVariable(values[0]))
     ) {
       return [];
     }
@@ -1890,9 +1923,11 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
 
   'font-variant-numeric': (declaration, config) =>
     config.tailwindConfig.corePlugins.fontVariantNumeric
-      ? strictConvertDeclarationValue(
+      ? convertComposableKeyword(
           declaration.value,
-          UTILITIES_MAPPING['font-variant-numeric']
+          UTILITIES_MAPPING['font-variant-numeric'],
+          ['normal-nums'],
+          config
         )
       : [],
 
@@ -2066,15 +2101,9 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
       : [],
 
   inset: (declaration, config) =>
-    config.tailwindConfig.corePlugins.inset
-      ? convertSizeDeclarationValue(
-          declaration.value,
-          config.mapping.inset,
-          'inset',
-          config.remInPx,
-          true
-        )
-      : [],
+    toClassNames(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING['inset'](declaration, config)
+    ),
 
   isolation: (declaration, config) =>
     config.tailwindConfig.corePlugins.isolation
@@ -2659,9 +2688,11 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
 
   'scroll-snap-type': (declaration, config) =>
     config.tailwindConfig.corePlugins.scrollSnapType
-      ? strictConvertDeclarationValue(
+      ? convertComposableKeyword(
           declaration.value,
-          UTILITIES_MAPPING['scroll-snap-type']
+          UTILITIES_MAPPING['scroll-snap-type'],
+          ['snap-none'],
+          config
         )
       : [],
 
@@ -2809,9 +2840,11 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
 
   'touch-action': (declaration, config) =>
     config.tailwindConfig.corePlugins.touchAction
-      ? strictConvertDeclarationValue(
+      ? convertComposableKeyword(
           declaration.value,
-          UTILITIES_MAPPING['touch-action']
+          UTILITIES_MAPPING['touch-action'],
+          ['touch-auto', 'touch-none', 'touch-manipulation'],
+          config
         )
       : [],
 

@@ -1,4 +1,4 @@
-import { getOwn } from '../utils/getOwn';
+import { getOwn } from './getOwn';
 
 const SIDES = ['top', 'right', 'bottom', 'left'] as const;
 const CORNERS = ['top-left', 'top-right', 'bottom-right', 'bottom-left'];
@@ -47,7 +47,7 @@ function logical(prefix: string, suffix = '') {
 
 /**
  * Longhand properties set by shorthand properties.
- * Logical properties are mapped to all the physical ones they may alias, since the writing mode is unknown.
+ * Physical shorthands also list the logical longhands, since those may alias any of their sides.
  * This table must be exact for shorthands that the converter converts and may be an over-approximation
  * for the ones it doesn't (they are only used to detect overlapping declarations).
  */

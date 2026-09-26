@@ -27,7 +27,6 @@ import {
 } from './utils/converterMappingByTailwindTheme';
 import {
   convertDeclarationValue,
-  escapeArbitraryValue,
   prepareArbitraryValue,
   DECLARATION_CONVERTERS_MAPPING,
   DECLARATION_UTILITIES_CONVERTERS_MAPPING,
@@ -40,7 +39,7 @@ import {
   SELECTOR_VARIANTS_ORDER,
 } from './mappings/pseudos-mapping';
 import { detectIndent } from './utils/detectIndent';
-import { getOwn } from './utils/getOwn';
+import { getOwn } from './core/getOwn';
 import { resolveConfig, ResolvedTailwindConfig } from './utils/resolveConfig';
 import { hasRuleAncestor, isConvertibleContext } from './core/context';
 import {
@@ -62,12 +61,16 @@ import {
   selectorClassNames,
   stringifySelector,
 } from './core/selector';
-import { isBalancedValue } from './core/values';
+import { escapeArbitraryValue, isBalancedValue } from './core/values';
 
 export interface TailwindConverterConfig {
+  /** The size of `1rem` in px to match `rem` values with the theme, `null` disables the matching. */
   remInPx?: number | null;
+  /** Tailwind config whose theme, prefix, separator and core plugins the classes follow. */
   tailwindConfig?: Config;
+  /** PostCSS plugins applied to the input before the conversion, e.g. `postcss-nested`. */
   postCSSPlugins: AcceptedPlugin[];
+  /** Convert declarations without a matching utility to arbitrary properties, e.g. `[mask-type:luminance]`. */
   arbitraryPropertiesIsEnabled: boolean;
   /**
    * Convert `@media`/`@supports` that don't match the theme to arbitrary variants,
@@ -110,6 +113,11 @@ const LEGACY_PSEUDO_ELEMENTS = [
   'first-line',
   'first-letter',
 ];
+
+/** Tailwind can't parse classes with empty or unbalanced values. */
+function isConvertibleValue(value: string) {
+  return value.trim() !== '' && isBalancedValue(value);
+}
 
 function isPseudoElement(selector: Selector) {
   return (
@@ -274,8 +282,8 @@ export class TailwindConverter {
       }
     });
 
-    // The indent is detected as before removing empty rules during the conversion
-    // (only converted declarations and empty rules are removed)
+    // Match the indent detection of 1.0: it ran after the converted declarations were removed,
+    // but before the empty rules were
     const indentNode = indentNodes.find(
       node => (node.parent || node.type === 'rule') && node.raws.before != null
     );
@@ -323,7 +331,7 @@ export class TailwindConverter {
   }
 
   /**
-   * The 1.x conversion, used when a subclass overrides `convertRule` or `makeTailwindNode`.
+   * The conversion of 1.0, used when a subclass overrides `convertRule` or `makeTailwindNode`.
    */
   private convertRulesWithNodesManager(rules: Rule[]) {
     const nodesManager = new TailwindNodesManager();
@@ -343,7 +351,7 @@ export class TailwindConverter {
   }
 
   /**
-   * Checks whether a subclass overrides a method of the 1.x API. The conversion calls an overridden
+   * Checks whether a subclass overrides a method of the 1.0 API. The conversion calls an overridden
    * method instead of its replacement, so that the customizations made for 1.0 keep working.
    */
   private isOverridden(method: string) {
@@ -356,7 +364,7 @@ export class TailwindConverter {
   }
 
   /**
-   * Converts a class prefix returned by a 1.x method (e.g. `md:hover:`) to a variant.
+   * Converts a class prefix returned by a 1.0 method (e.g. `md:hover:`) to a variant.
    */
   private classPrefixToVariant(classPrefix: string | null | undefined) {
     if (!classPrefix) {
@@ -370,7 +378,7 @@ export class TailwindConverter {
       : classPrefix;
   }
 
-  protected convertRuleInPlacement(rule: Rule, placement: UtilitiesPlacement) {
+  private convertRuleInPlacement(rule: Rule, placement: UtilitiesPlacement) {
     if (!isConvertibleContext(rule)) {
       return;
     }
@@ -395,8 +403,8 @@ export class TailwindConverter {
     });
 
     if (!isPlaced) {
-      // There is no base rule to move the variants to, keep the rule as is. Without variants
-      // the utilities may conflict with other rules of the file, so the rule is converted again.
+      // The utilities can't be moved to a base rule (see `UtilitiesPlacement.place`), so the rule
+      // keeps them. Without variants other classes of the file may conflict, so the rule is planned again.
       planned = plan([]);
 
       placement.place({
@@ -427,7 +435,7 @@ export class TailwindConverter {
    * - `@apply` of a class also applies the rules of the same file that use this class
    *   (e.g. `@apply float-left` copies the declarations of `.foo .float-left { … }`).
    */
-  protected createApplyConflictGuard(rule: Rule, variants: Variant[]) {
+  private createApplyConflictGuard(rule: Rule, variants: Variant[]) {
     const ruleClassNames = selectorClassNames(rule.selector);
     const variantValues = variants.map(variant => variant.value);
 
@@ -450,28 +458,29 @@ export class TailwindConverter {
       prefix: this.config.tailwindConfig.prefix,
       separator: this.config.tailwindConfig.separator,
     };
-    const candidate = formatUtilityClass(
-      className,
-      variants,
-      false,
-      formatOptions
-    );
-    const baseCandidate = formatUtilityClass(
-      className,
-      [],
-      false,
-      formatOptions
-    );
+    // `@apply !float-left` looks up both `float-left` and `!float-left`
+    const importantModifiers = important ? [false, true] : [false];
 
-    return !(
-      this.fileClassNames.has(candidate) ||
-      ruleClassNames.has(candidate) ||
-      ruleClassNames.has(baseCandidate) ||
-      (important &&
-        ruleClassNames.has(
-          formatUtilityClass(className, [], true, formatOptions)
-        ))
-    );
+    return !importantModifiers.some(isImportant => {
+      const candidate = formatUtilityClass(
+        className,
+        variants,
+        isImportant,
+        formatOptions
+      );
+      const baseCandidate = formatUtilityClass(
+        className,
+        [],
+        isImportant,
+        formatOptions
+      );
+
+      return (
+        this.fileClassNames.has(candidate) ||
+        ruleClassNames.has(candidate) ||
+        ruleClassNames.has(baseCandidate)
+      );
+    });
   }
 
   /**
@@ -479,7 +488,7 @@ export class TailwindConverter {
    * A declaration is left as is if converting it could change which declaration wins:
    * `@apply` is inserted before the remaining declarations of the rule.
    */
-  protected convertRuleDeclarations(
+  private convertRuleDeclarations(
     rule: Rule,
     isUtilityAllowed: (
       utility: ConvertedUtility,
@@ -522,7 +531,7 @@ export class TailwindConverter {
     /**
      * A utility may set more than its declaration (e.g. `border-solid` for `border-top: 1px solid`
      * sets the style of all sides). Other declarations of the rule setting these properties must be
-     * converted to the same utility, and with `strict` they must set all of them.
+     * converted to the same utility, and with `strict` or `!important` they must set all of them.
      */
     const hasAllowedSideEffects = (index: number) =>
       candidates[index].every(utility => {
@@ -613,13 +622,12 @@ export class TailwindConverter {
   }
 
   /**
-   * Leaves the declaration as is if its value is too deeply nested to be parsed.
+   * Leaves the declaration as is if its value is so deeply nested that the value parser overflows the stack.
    */
   private safeConvertDeclarationToUtilities(declaration: Declaration) {
     try {
       return this.convertDeclarationToUtilities(declaration);
     } catch (error) {
-      // the value parser overflows the stack on deeply nested functions
       if (error instanceof RangeError) {
         return [];
       }
@@ -628,62 +636,77 @@ export class TailwindConverter {
     }
   }
 
-  protected convertDeclarationToUtilities(
+  private convertDeclarationToUtilities(
     declaration: Declaration
   ): ConvertedUtility[] {
-    if (!declaration.value.trim() || !isBalancedValue(declaration.value)) {
+    if (!isConvertibleValue(declaration.value)) {
       return [];
     }
 
     const props = longhandsOf(declaration.prop);
-
-    if (this.isOverridden('convertDeclarationToClasses')) {
-      return this.convertDeclarationToClasses(declaration).map(className => ({
-        className,
-        props,
-      }));
-    }
-
-    // Important utilities override the other declarations of the rule with their side effects
-    // (e.g. `!text-sm` overrides `line-height`), so only the exact ones are used
-    const config =
-      declaration.important && !this.config.strict
-        ? { ...this.config, strict: true }
-        : this.config;
+    const config = this.configFor(declaration);
     const utilitiesConverter = getOwn(
       DECLARATION_UTILITIES_CONVERTERS_MAPPING,
       declaration.prop
     );
+    let utilities: ConvertedUtility[];
 
-    if (!utilitiesConverter) {
-      return this.convertDeclarationToClassesWithConfig(
+    if (utilitiesConverter) {
+      utilities = utilitiesConverter(declaration, config);
+
+      if (!utilities.length && this.canMakeArbitraryProperty(declaration)) {
+        utilities = [
+          { className: this.makeArbitraryProperty(declaration), props },
+        ];
+      }
+    } else {
+      utilities = this.convertDeclarationToClassesWithConfig(
         declaration,
         config
       ).map(className => ({ className, props }));
     }
 
-    const utilities = utilitiesConverter(declaration, config);
-
-    if (utilities.length || !this.canMakeArbitraryProperty(declaration)) {
+    if (!this.isOverridden('convertDeclarationToClasses')) {
       return utilities;
     }
 
-    return [{ className: this.makeArbitraryProperty(declaration), props }];
+    // the classes of the override that the conversion above also returns keep their properties
+    // (e.g. `text-sm` sets `line-height` too), the other ones stand for the declaration
+    return this.convertDeclarationToClasses(declaration).map(
+      className =>
+        utilities.find(utility => utility.className === className) || {
+          className,
+          props,
+        }
+    );
   }
 
   protected convertDeclarationToClasses(declaration: Declaration) {
-    return this.convertDeclarationToClassesWithConfig(declaration, this.config);
+    if (!isConvertibleValue(declaration.value)) {
+      return [];
+    }
+
+    return this.convertDeclarationToClassesWithConfig(
+      declaration,
+      this.configFor(declaration)
+    );
+  }
+
+  /**
+   * Important utilities override the other declarations of the rule with their side effects
+   * (e.g. `!text-sm` overrides `line-height`), so only the exact ones are used for them.
+   */
+  private configFor(declaration: Declaration): ResolvedTailwindConverterConfig {
+    return declaration.important && !this.config.strict
+      ? { ...this.config, strict: true }
+      : this.config;
   }
 
   private convertDeclarationToClassesWithConfig(
     declaration: Declaration,
     config: ResolvedTailwindConverterConfig
   ) {
-    if (!declaration.value.trim() || !isBalancedValue(declaration.value)) {
-      return [];
-    }
-
-    let classes =
+    const classes =
       getOwn(DECLARATION_CONVERTERS_MAPPING, declaration.prop)?.(
         declaration,
         config
@@ -704,7 +727,7 @@ export class TailwindConverter {
     );
   }
 
-  protected makeArbitraryProperty(declaration: Declaration) {
+  private makeArbitraryProperty(declaration: Declaration) {
     // Tailwind doesn't recognize uppercase property names, the names of custom properties are case-sensitive
     const property = declaration.prop.startsWith('--')
       ? declaration.prop
@@ -718,7 +741,7 @@ export class TailwindConverter {
    * (`:hover`, `[aria-*]`, …) and from the at-rules around the rule (`@media`, `@supports`),
    * and the utilities are moved to a rule with the remaining base selector.
    */
-  protected resolveRuleLocation(rule: Rule): RuleLocation {
+  private resolveRuleLocation(rule: Rule): RuleLocation {
     // rules without variants are converted in place
     const inPlace: RuleLocation = {
       anchor: rule,
@@ -768,7 +791,7 @@ export class TailwindConverter {
    * Extracts variants from the last compound selector, e.g. `.foo .bar:hover` → `.foo .bar` + `hover`.
    * Returns `null` if the selector can't be split safely.
    */
-  protected parseSelectorVariants(
+  private parseSelectorVariants(
     rawSelector: string
   ): { baseSelector: string; variants: Variant[] } | null {
     const parsedSelectors = safeParseSelector(rawSelector);
@@ -827,9 +850,8 @@ export class TailwindConverter {
     }
 
     if (!baseSelectors.length) {
-      // the whole selector consists of variants (e.g. `:hover` from a nested `&:hover` in a css part
-      // without a selector): the base is an empty selector, the utilities can only be merged into a
-      // preceding rule with an empty selector
+      // Only variants (e.g. `&:hover` in a selector-less block `{ …; &:hover {…} }`):
+      // the utilities can only be merged into a preceding rule with an empty selector
       return { baseSelector: '', variants };
     }
 
@@ -850,7 +872,7 @@ export class TailwindConverter {
     return baseSelector === null ? null : { baseSelector, variants };
   }
 
-  protected makeSelectorVariant(value: string): Variant {
+  private makeSelectorVariant(value: string): Variant {
     const orderKey = /^(aria|data)-/.test(value) ? value.split('-')[0] : value;
     const order = SELECTOR_VARIANTS_ORDER.indexOf(orderKey);
 
@@ -866,7 +888,7 @@ export class TailwindConverter {
    * Converts the at-rules around the rule to variants. The at-rules are converted only
    * if all of them (up to the root) are convertible `@media`/`@supports`.
    */
-  protected resolveContextVariants(
+  private resolveContextVariants(
     rule: Rule
   ): { variants: Variant[]; anchor: ChildNode } | null {
     const atRules: AtRule[] = [];
@@ -909,7 +931,7 @@ export class TailwindConverter {
   /**
    * @param atRules at-rules from the outermost to the innermost one
    */
-  protected convertAtRulesToVariants(atRules: AtRule[]): string[] | null {
+  private convertAtRulesToVariants(atRules: AtRule[]): string[] | null {
     const mediaAtRules: AtRule[] = [];
     const supportsAtRules: AtRule[] = [];
 
@@ -993,7 +1015,7 @@ export class TailwindConverter {
     return [...mediaVariants, ...supportsVariants];
   }
 
-  protected makeArbitraryAtRuleVariant(name: string, params: string) {
+  private makeArbitraryAtRuleVariant(name: string, params: string) {
     const trimmed = params.trim();
 
     if (!trimmed || UNSAFE_ARBITRARY_VARIANT_REGEXP.test(trimmed)) {
@@ -1003,7 +1025,7 @@ export class TailwindConverter {
     return `[@${name}_${escapeArbitraryValue(trimmed)}]`;
   }
 
-  protected isDarkModeMedia() {
+  private isDarkModeMedia() {
     const { darkMode } = this.config.tailwindConfig;
 
     return darkMode == null || darkMode === 'media';
@@ -1130,7 +1152,7 @@ export class TailwindConverter {
     return null;
   }
 
-  protected convertAttributeSelectorToVariant(
+  private convertAttributeSelectorToVariant(
     selector: AttributeSelector,
     variantPrefix: 'aria' | 'data',
     themeMapping: Record<string, string> | undefined
@@ -1142,7 +1164,8 @@ export class TailwindConverter {
 
     const mapped = getOwn(
       themeMapping,
-      this.attributeSelectorToMappingKey(selector, 6)
+      // without `[aria-`/`[data-` and `]`
+      this.attributeSelectorToMappingKey(selector, variantPrefix.length + 2)
     );
 
     if (mapped) {
@@ -1155,7 +1178,8 @@ export class TailwindConverter {
       return `${variantPrefix}-[${attribute}]`;
     }
 
-    // Tailwind collapses spaces in arbitrary variants
+    // only `[attr=value]`, and without brackets, backslashes, non-space whitespace
+    // or repeated spaces (Tailwind collapses them)
     if (
       selector.action !== 'equals' ||
       /[[\]\\]|[^\S ]| {2}/.test(selector.value) ||
@@ -1209,7 +1233,8 @@ export class TailwindConverter {
   }
 
   /**
-   * @deprecated Kept for backward compatibility, the conversion is done by `convertCSS`.
+   * @deprecated Called only when a subclass overrides `convertRule` or `makeTailwindNode`,
+   * which switches to the placement of 1.0.
    */
   protected convertRule(rule: Rule): TailwindNode | null {
     const planned = this.convertRuleDeclarations(
@@ -1248,7 +1273,8 @@ export class TailwindConverter {
   }
 
   /**
-   * @deprecated Kept for backward compatibility, the conversion is done by `convertCSS`.
+   * @deprecated Called only when a subclass overrides `convertRule` or `makeTailwindNode`,
+   * which switches to the placement of 1.0.
    */
   protected makeTailwindNode(
     rule: Rule,
@@ -1287,7 +1313,9 @@ export class TailwindConverter {
   }
 
   /**
-   * @deprecated Use `parseSelectorVariants`.
+   * Splits the selector into the base selector and the class prefix of its variants,
+   * e.g. `.foo .bar:hover` → `.foo .bar` + `hover:`. Overriding it converts the variants of
+   * a selector as a whole (e.g. `.group:hover .foo` → `.foo` + `group-hover:`).
    */
   protected parseSelector(rawSelector: string) {
     const parsed = this.parseSelectorVariants(rawSelector);
@@ -1323,7 +1351,7 @@ export class TailwindConverter {
   }
 
   /**
-   * @deprecated Use `resolveContextVariants`.
+   * @deprecated Override `convertMediaParamsToVariants` or `convertSupportsParamsToVariant`.
    */
   protected convertContainerToClassPrefix(container: Container | undefined) {
     if (!isAtRuleNode(container)) {
