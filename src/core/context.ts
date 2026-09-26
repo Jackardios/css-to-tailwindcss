@@ -1,19 +1,24 @@
-import type { Container, Document, Rule } from 'postcss';
+import type { AtRule, Container, Document, Rule } from 'postcss';
 
 /**
  * At-rules whose nested rules style elements the same way as top-level rules.
  * Rules inside any other at-rule (`@keyframes`, `@font-face`, `@page`, …) are not selectors of elements
  * and must never be converted.
  */
-const STYLE_CONTAINER_AT_RULES = new Set([
-  'media',
-  'supports',
-  'layer',
-  'container',
-]);
+const STYLE_CONTAINER_AT_RULES = new Set(['media', 'supports', 'container']);
 
-export function isStyleContainerAtRuleName(name: string) {
-  return STYLE_CONTAINER_AT_RULES.has(name.toLowerCase());
+/**
+ * Layers that Tailwind processes itself. Utilities don't work inside native cascade layers:
+ * the unlayered `--tw-*` defaults of the preflight override the variables they set.
+ */
+const TAILWIND_LAYERS = new Set(['base', 'components', 'utilities']);
+
+function isStyleContainerAtRule(atRule: AtRule) {
+  const name = atRule.name.toLowerCase();
+
+  return name === 'layer'
+    ? TAILWIND_LAYERS.has(atRule.params.trim())
+    : STYLE_CONTAINER_AT_RULES.has(name);
 }
 
 /**
@@ -47,7 +52,7 @@ export function isConvertibleContext(rule: Rule) {
 
   while (parent && parent.type !== 'root' && parent.type !== 'document') {
     if (parent.type === 'atrule') {
-      if (!isStyleContainerAtRuleName((parent as any).name)) {
+      if (!isStyleContainerAtRule(parent as AtRule)) {
         return false;
       }
     } else if (parent.type !== 'rule') {

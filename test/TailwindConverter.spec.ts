@@ -547,11 +547,7 @@ describe('TailwindConverter', () => {
       },
       {
         selector: '.b',
-        tailwindClasses: [
-          'border-[medium]',
-          'border-none',
-          'border-[rgba(148,163,184,0.1)]',
-        ],
+        tailwindClasses: ['border-none', 'border-[rgba(148,163,184,0.1)]'],
       },
     ]);
   });

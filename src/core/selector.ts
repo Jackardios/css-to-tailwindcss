@@ -187,3 +187,29 @@ export function stringifySelector(selectors: Selector[][]): string | null {
     ? result
     : null;
 }
+
+/**
+ * Returns the base selector as written in the raw selector if the variants are at its end,
+ * e.g. `1abc` for `1abc:hover` (a stringified selector would be `\31 abc`).
+ */
+export function rawSelectorPrefix(
+  rawSelector: string,
+  baseSelectors: Selector[][]
+): string | null {
+  const expected = JSON.stringify(baseSelectors);
+
+  for (let i = rawSelector.length - 1; i > 0; i--) {
+    const char = rawSelector.charAt(i);
+
+    if ((char === ':' || char === '[') && rawSelector.charAt(i - 1) !== '\\') {
+      const candidate = rawSelector.slice(0, i).trim();
+      const parsed = safeParseSelector(candidate);
+
+      if (parsed && JSON.stringify(parsed) === expected) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}

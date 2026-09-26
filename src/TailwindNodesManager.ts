@@ -1,4 +1,4 @@
-import { type AtRule, type Node, Rule, ChildNode } from 'postcss';
+import { type AtRule, type Node, Rule } from 'postcss';
 import { isAtRuleNode } from './utils/isAtRuleNode';
 import { isChildNode } from './utils/isChildNode';
 
@@ -109,7 +109,7 @@ export class TailwindNodesManager {
   /**
    * Returns the ancestor of the node (or the node itself) that is a direct child of the root.
    */
-  protected upToRootChild(node: Node): ChildNode | null {
+  protected upToRootChild(node: Node): AtRule | Rule | null {
     let current: Node = node;
 
     while (
@@ -120,7 +120,7 @@ export class TailwindNodesManager {
       current = current.parent;
     }
 
-    return current.parent ? (current as ChildNode) : null;
+    return current.parent ? (current as AtRule | Rule) : null;
   }
 
   static convertRuleToKey(

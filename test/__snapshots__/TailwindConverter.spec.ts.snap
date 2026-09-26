@@ -56,7 +56,7 @@ exports[`TailwindConverter should convert border with color correctly even if wi
     @apply border-0 border-dotted border-[rgba(148,163,184,0.1)];
 }
 .b {
-    @apply border-[medium] border-none border-[rgba(148,163,184,0.1)];
+    @apply border-none border-[rgba(148,163,184,0.1)];
 }"
 `;
 

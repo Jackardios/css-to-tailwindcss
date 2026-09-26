@@ -54,6 +54,8 @@ import {
   Variant,
 } from './core/placement';
 import {
+  normalizeSelectorKey,
+  rawSelectorPrefix,
   safeParseSelector,
   selectorClassNames,
   stringifySelector,
@@ -114,6 +116,11 @@ function isPseudoElement(selector: Selector) {
   );
 }
 
+interface PlannedDeclaration {
+  declaration: Declaration;
+  converted: ConvertedDeclaration;
+}
+
 interface RuleLocation {
   anchor: ChildNode;
   baseSelector: string;
@@ -123,6 +130,8 @@ interface RuleLocation {
 
 export class TailwindConverter {
   protected config: ResolvedTailwindConverterConfig;
+  /** Class names used in the selectors of the file being converted. */
+  private fileClassNames = new Set<string>();
 
   constructor({
     tailwindConfig,
@@ -151,16 +160,32 @@ export class TailwindConverter {
       map: false,
     });
 
-    // Rules are collected beforehand, since placing utilities inserts new rules into the tree
-    const rules: Rule[] = [];
-    parsed.root.walkRules(rule => {
-      rules.push(rule);
+    // the nodes `detectIndent` looks at, collected before empty rules are removed
+    const indentNodes: ChildNode[] = [];
+    parsed.root.each(child => {
+      if ('nodes' in child && child.nodes) {
+        indentNodes.push(...child.nodes);
+      }
     });
 
-    const fileClassNames = new Set<string>();
+    // Rules are collected beforehand, since placing utilities inserts new rules into the tree
+    const rules: Rule[] = [];
+    parsed.root.walkRules((rule, index) => {
+      const prev = rule.parent?.nodes[index - 1];
+
+      if (prev?.type === 'rule' && this.canMergeAdjacentRules(prev, rule)) {
+        prev.append(rule.nodes);
+        rule.remove();
+      } else {
+        rules.push(rule);
+      }
+    });
+
+    // the conversion below is synchronous, so concurrent calls don't share the class names
+    this.fileClassNames = new Set();
     rules.forEach(rule => {
       selectorClassNames(rule.selector).forEach(className =>
-        fileClassNames.add(className)
+        this.fileClassNames.add(className)
       );
     });
 
@@ -173,9 +198,7 @@ export class TailwindConverter {
       nodes = this.convertRulesWithNodesManager(rules);
     } else {
       const placement = new UtilitiesPlacement();
-      rules.forEach(rule =>
-        this.convertRuleInPlacement(rule, placement, fileClassNames)
-      );
+      rules.forEach(rule => this.convertRuleInPlacement(rule, placement));
 
       nodes = placement.getNodes(
         {
@@ -187,8 +210,7 @@ export class TailwindConverter {
             className,
             variants,
             important,
-            selectorClassNames(rule.selector),
-            fileClassNames
+            selectorClassNames(rule.selector)
           )
       );
     }
@@ -204,12 +226,51 @@ export class TailwindConverter {
       }
     });
 
+    // The indent is detected as before removing empty rules during the conversion
+    // (only converted declarations and empty rules are removed)
+    const indentNode = indentNodes.find(
+      node => (node.parent || node.type === 'rule') && node.raws.before != null
+    );
+    if (indentNode && !parsed.root.raws.indent) {
+      parsed.root.raws.indent = (
+        indentNode.raws.before?.split('\n').pop() || ''
+      ).replace(/\S/g, '');
+    }
+
     this.cleanRaws(parsed.root);
 
     return {
       nodes: nodes.filter(node => node.tailwindClasses.length),
       convertedRoot: parsed.root,
     };
+  }
+
+  /**
+   * Adjacent rules with the same selector and without variants are merged, so that the side effects
+   * of utilities (e.g. `line-height` of `text-sm`) are resolved as in a single rule. Rules setting
+   * the same properties are not merged: the declarations would become fallbacks of each other.
+   */
+  private canMergeAdjacentRules(prev: Rule, rule: Rule) {
+    const hasOnlyDeclarations = (node: Rule) =>
+      node.every(child => child.type === 'decl' || child.type === 'comment');
+    const propsOf = (node: Rule) => {
+      const props: string[] = [];
+      node.walkDecls(decl => {
+        props.push(...longhandsOf(decl.prop));
+      });
+
+      return props;
+    };
+
+    return (
+      hasOnlyDeclarations(prev) &&
+      hasOnlyDeclarations(rule) &&
+      normalizeSelectorKey(prev.selector) ===
+        normalizeSelectorKey(rule.selector) &&
+      isConvertibleContext(rule) &&
+      !this.resolveRuleLocation(rule).variants.length &&
+      !propertiesIntersect(propsOf(prev), propsOf(rule))
+    );
   }
 
   /**
@@ -260,43 +321,53 @@ export class TailwindConverter {
       : classPrefix;
   }
 
-  protected convertRuleInPlacement(
-    rule: Rule,
-    placement: UtilitiesPlacement,
-    fileClassNames: Set<string> = new Set()
-  ) {
+  protected convertRuleInPlacement(rule: Rule, placement: UtilitiesPlacement) {
     if (!isConvertibleContext(rule)) {
       return;
     }
 
     const location = this.resolveRuleLocation(rule);
-    const declarations = this.convertRuleDeclarations(
-      rule,
-      this.createApplyConflictGuard(rule, location.variants, fileClassNames)
-    );
+    const plan = (variants: Variant[]) =>
+      this.convertRuleDeclarations(
+        rule,
+        this.createApplyConflictGuard(rule, variants)
+      );
+    let planned = plan(location.variants);
 
-    if (!declarations.length) {
+    if (!planned.length) {
       return;
     }
 
     const isPlaced = placement.place({
       rule,
-      declarations,
+      declarations: planned.map(item => item.converted),
       ...location,
       allowCreate: location.baseSelector.trim() !== '',
     });
 
     if (!isPlaced) {
-      // there is no base rule to move the variants to, keep the rule as is
+      // There is no base rule to move the variants to, keep the rule as is. Without variants
+      // the utilities may conflict with other rules of the file, so the rule is converted again.
+      planned = plan([]);
+
       placement.place({
         rule,
-        declarations,
+        declarations: planned.map(item => item.converted),
         anchor: rule,
         baseSelector: rule.selector,
         variants: [],
         mergeable: false,
         allowCreate: false,
       });
+    }
+
+    planned.forEach(({ declaration }) => declaration.remove());
+    placement.invalidateEffectiveProps(rule);
+
+    // Empty rules are removed in the end anyway, removing them now saves the placement
+    // from looking through them again
+    if (!rule.nodes.length && !placement.hasUtilities(rule)) {
+      rule.remove();
     }
   }
 
@@ -307,11 +378,7 @@ export class TailwindConverter {
    * - `@apply` of a class also applies the rules of the same file that use this class
    *   (e.g. `@apply float-left` copies the declarations of `.foo .float-left { … }`).
    */
-  protected createApplyConflictGuard(
-    rule: Rule,
-    variants: Variant[],
-    fileClassNames: Set<string> = new Set()
-  ) {
+  protected createApplyConflictGuard(rule: Rule, variants: Variant[]) {
     const ruleClassNames = selectorClassNames(rule.selector);
     const variantValues = variants.map(variant => variant.value);
 
@@ -320,8 +387,7 @@ export class TailwindConverter {
         utility.className,
         variantValues,
         important,
-        ruleClassNames,
-        fileClassNames
+        ruleClassNames
       );
   }
 
@@ -329,8 +395,7 @@ export class TailwindConverter {
     className: string,
     variants: string[],
     important: boolean,
-    ruleClassNames: Set<string>,
-    fileClassNames: Set<string>
+    ruleClassNames: Set<string>
   ) {
     const formatOptions = {
       prefix: this.config.tailwindConfig.prefix,
@@ -350,7 +415,7 @@ export class TailwindConverter {
     );
 
     return !(
-      fileClassNames.has(candidate) ||
+      this.fileClassNames.has(candidate) ||
       ruleClassNames.has(candidate) ||
       ruleClassNames.has(baseCandidate) ||
       (important &&
@@ -361,7 +426,7 @@ export class TailwindConverter {
   }
 
   /**
-   * Converts the rule's own declarations and removes the converted ones.
+   * Converts the rule's own declarations, the caller removes the converted ones.
    * A declaration is left as is if converting it could change which declaration wins:
    * `@apply` is inserted before the remaining declarations of the rule.
    */
@@ -371,7 +436,7 @@ export class TailwindConverter {
       utility: ConvertedUtility,
       important: boolean
     ) => boolean = () => true
-  ): ConvertedDeclaration[] {
+  ): PlannedDeclaration[] {
     const declarations: Declaration[] = [];
     // at-rules of the rule (e.g. an existing `@apply`) stay after the inserted `@apply`
     let declarationsBeforeAtRule = Infinity;
@@ -402,7 +467,7 @@ export class TailwindConverter {
       // the same property with different values is usually a fallback for older browsers
       (valuesByProperty.get(declaration.prop.toLowerCase())?.size || 0) > 1
         ? []
-        : this.convertDeclarationToUtilities(declaration)
+        : this.safeConvertDeclarationToUtilities(declaration)
     );
 
     /**
@@ -437,7 +502,7 @@ export class TailwindConverter {
               other => other.className === utility.className
             )
           ) &&
-          (!this.config.strict ||
+          (!(this.config.strict || declarations[index].important) ||
             sideEffectProps.every(p =>
               others.some(otherIndex =>
                 declarationsProps[otherIndex].includes(p)
@@ -447,7 +512,7 @@ export class TailwindConverter {
       });
 
     const orderSensitiveProps = new Set<string>();
-    const converted: ConvertedDeclaration[] = [];
+    const planned: PlannedDeclaration[] = [];
 
     declarations.forEach((declaration, index) => {
       const declarationProps = declarationsProps[index];
@@ -484,16 +549,34 @@ export class TailwindConverter {
         return;
       }
 
-      declaration.remove();
-      converted.push({
-        declarationProps,
-        overriddenProps: definiteLonghandsOf(declaration.prop),
-        important: !!declaration.important,
-        utilities,
+      planned.push({
+        declaration,
+        converted: {
+          declarationProps,
+          overriddenProps: definiteLonghandsOf(declaration.prop),
+          important: !!declaration.important,
+          utilities,
+        },
       });
     });
 
-    return converted;
+    return planned;
+  }
+
+  /**
+   * Leaves the declaration as is if its value is too deeply nested to be parsed.
+   */
+  private safeConvertDeclarationToUtilities(declaration: Declaration) {
+    try {
+      return this.convertDeclarationToUtilities(declaration);
+    } catch (error) {
+      // the value parser overflows the stack on deeply nested functions
+      if (error instanceof RangeError) {
+        return [];
+      }
+
+      throw error;
+    }
   }
 
   protected convertDeclarationToUtilities(
@@ -504,22 +587,33 @@ export class TailwindConverter {
     }
 
     const props = longhandsOf(declaration.prop);
-    const utilitiesConverter = getOwn(
-      DECLARATION_UTILITIES_CONVERTERS_MAPPING,
-      declaration.prop
-    );
 
-    if (
-      !utilitiesConverter ||
-      this.isOverridden('convertDeclarationToClasses')
-    ) {
+    if (this.isOverridden('convertDeclarationToClasses')) {
       return this.convertDeclarationToClasses(declaration).map(className => ({
         className,
         props,
       }));
     }
 
-    const utilities = utilitiesConverter(declaration, this.config);
+    // Important utilities override the other declarations of the rule with their side effects
+    // (e.g. `!text-sm` overrides `line-height`), so only the exact ones are used
+    const config =
+      declaration.important && !this.config.strict
+        ? { ...this.config, strict: true }
+        : this.config;
+    const utilitiesConverter = getOwn(
+      DECLARATION_UTILITIES_CONVERTERS_MAPPING,
+      declaration.prop
+    );
+
+    if (!utilitiesConverter) {
+      return this.convertDeclarationToClassesWithConfig(
+        declaration,
+        config
+      ).map(className => ({ className, props }));
+    }
+
+    const utilities = utilitiesConverter(declaration, config);
 
     if (utilities.length || !this.config.arbitraryPropertiesIsEnabled) {
       return utilities;
@@ -529,6 +623,13 @@ export class TailwindConverter {
   }
 
   protected convertDeclarationToClasses(declaration: Declaration) {
+    return this.convertDeclarationToClassesWithConfig(declaration, this.config);
+  }
+
+  private convertDeclarationToClassesWithConfig(
+    declaration: Declaration,
+    config: ResolvedTailwindConverterConfig
+  ) {
     if (!declaration.value.trim()) {
       return [];
     }
@@ -536,7 +637,7 @@ export class TailwindConverter {
     let classes =
       getOwn(DECLARATION_CONVERTERS_MAPPING, declaration.prop)?.(
         declaration,
-        this.config
+        config
       ) || [];
 
     if (classes.length === 0 && this.config.arbitraryPropertiesIsEnabled) {
@@ -680,7 +781,9 @@ export class TailwindConverter {
       return null;
     }
 
-    const baseSelector = stringifySelector([baseSelectors]);
+    const baseSelector =
+      rawSelectorPrefix(rawSelector, [baseSelectors]) ??
+      stringifySelector([baseSelectors]);
 
     return baseSelector === null ? null : { baseSelector, variants };
   }
@@ -1046,10 +1149,12 @@ export class TailwindConverter {
    * @deprecated Kept for backward compatibility, the conversion is done by `convertCSS`.
    */
   protected convertRule(rule: Rule): TailwindNode | null {
-    const declarations = this.convertRuleDeclarations(
+    const planned = this.convertRuleDeclarations(
       rule,
       this.createApplyConflictGuard(rule, [])
     );
+    planned.forEach(({ declaration }) => declaration.remove());
+    const declarations = planned.map(({ converted }) => converted);
 
     if (!declarations.length) {
       return null;
@@ -1073,13 +1178,7 @@ export class TailwindConverter {
         separator: this.config.tailwindConfig.separator,
       },
       (className, variants, important) =>
-        this.isClassApplicable(
-          className,
-          variants,
-          important,
-          ruleClassNames,
-          new Set()
-        )
+        this.isClassApplicable(className, variants, important, ruleClassNames)
     );
 
     return this.makeTailwindNode(rule, tailwindClasses);

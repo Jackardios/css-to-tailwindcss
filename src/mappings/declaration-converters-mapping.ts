@@ -8,6 +8,7 @@ import {
   normalizeValue,
 } from '../utils/converterMappingByTailwindTheme';
 import {
+  hasTopLevelDivider,
   isSingleToken,
   parseFunctionList,
   splitBySpaces,
@@ -52,8 +53,12 @@ export function convertDeclarationValue(
 
   const arbitraryValue = prepareArbitraryValue(fallbackValue);
 
-  // Tailwind crashes on arbitrary values like `[constructor]` (it looks them up in plain objects)
-  if (!arbitraryValue || arbitraryValue in Object.prototype) {
+  // Tailwind crashes on arbitrary values like `[constructor]` (it looks them up in plain objects),
+  // it reads `\_` as `_` and `_` as a space
+  const tailwindValue = arbitraryValue.replace(/\\?_/g, underscore =>
+    underscore === '_' ? ' ' : '_'
+  );
+  if (!arbitraryValue || tailwindValue in Object.prototype) {
     return [];
   }
 
@@ -175,7 +180,7 @@ export function convertBorderDeclarationToUtilities(
 ): ConvertedUtility[] {
   const tokens = splitBySpaces(value);
 
-  if (!tokens.length || tokens.length > 3) {
+  if (!tokens.length || tokens.length > 3 || hasTopLevelDivider(value)) {
     return [];
   }
 
@@ -198,10 +203,11 @@ export function convertBorderDeclarationToUtilities(
     }
   }
 
-  // `var()` may stand for any part of the shorthand, a CSS-wide keyword sets all of them
+  // `var()` may stand for any part of the shorthand (or several of them), unless the other parts
+  // are set; a CSS-wide keyword sets all of them
   if (
-    tokens.length === 1 &&
-    (isCSSVariable(tokens[0]) || isCSSWideKeyword(tokens[0]))
+    (tokens.length === 1 && isCSSWideKeyword(tokens[0])) ||
+    (color && /\bvar\(/i.test(color) && !(width && style))
   ) {
     return [];
   }
@@ -259,22 +265,28 @@ export function convertBorderDeclarationToUtilities(
   };
 
   let utilities: Array<ConvertedUtility | null>;
+  // the idiomatic utilities of an invisible border don't reset all its parts
+  let partial = false;
 
   if (!style || style === 'none') {
     const hasOnlyStyle = (!width || isZeroValue(width)) && !color;
 
     if (hasOnlyStyle) {
       // A border without a style (`none` is the initial one) isn't drawn and takes no space,
-      // which is the same as a zero width. The idiomatic utility doesn't reset the other parts.
-      const utility = side || width ? convertWidth('0') : convertStyle('none');
-
-      utilities = [utility && { ...utility, partial: true }];
+      // which is the same as a zero width.
+      utilities = [side || width ? convertWidth('0') : convertStyle('none')];
+      partial = true;
     } else if (side) {
       // the width and the color are kept for a style set later, but a side style can't be reset
       return [];
+    } else if (!width) {
+      // The width isn't reset to `medium`: the preflight sets a zero width,
+      // which a style set elsewhere (e.g. by `border-t border-solid`) would reveal
+      utilities = [convertStyle('none'), convertColor(color as string)];
+      partial = true;
     } else {
       utilities = [
-        convertWidth(width ?? 'medium'),
+        convertWidth(width),
         convertStyle('none'),
         convertColor(color ?? 'currentColor'),
       ];
@@ -293,9 +305,13 @@ export function convertBorderDeclarationToUtilities(
     ];
   }
 
-  return utilities.every(utility => utility)
-    ? (utilities as ConvertedUtility[])
-    : [];
+  if (!utilities.every(utility => utility)) {
+    return [];
+  }
+
+  return (utilities as ConvertedUtility[]).map(utility =>
+    partial ? { ...utility, partial } : utility
+  );
 }
 
 function parseComposedSpacingValue(value: string) {
@@ -847,7 +863,7 @@ function expandFlexValue(value: string) {
       none: '0 0 auto',
       initial: '0 1 auto',
     };
-    const keyword = keywords[token.toLowerCase()];
+    const keyword = getOwn(keywords, token.toLowerCase());
 
     if (keyword) return keyword;
     return isNumber(token) ? `${token} 1 0%` : `1 1 ${token}`;
@@ -934,7 +950,10 @@ type BorderWidthGroup = [
  */
 const convertBorderWidthDeclarationToUtilities: DeclarationUtilitiesConverter =
   (declaration, config) => {
-    if (!config.tailwindConfig.corePlugins.borderWidth) {
+    if (
+      !config.tailwindConfig.corePlugins.borderWidth ||
+      hasTopLevelDivider(declaration.value)
+    ) {
       return [];
     }
 
@@ -1827,7 +1846,8 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
     }
 
     const value = declaration.value.trim();
-    const normalizedValue = FONT_WEIGHT_KEYWORDS[value.toLowerCase()] || value;
+    const normalizedValue =
+      getOwn(FONT_WEIGHT_KEYWORDS, value.toLowerCase()) || value;
 
     return convertDeclarationValue(
       normalizedValue,
@@ -2637,6 +2657,11 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
 
   'text-decoration': (declaration, config) => {
     if (!config.tailwindConfig.corePlugins.textDecoration) {
+      return [];
+    }
+
+    // the shorthand also resets the style, the color and the thickness of the line
+    if (config.strict) {
       return [];
     }
 

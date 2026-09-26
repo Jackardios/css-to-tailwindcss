@@ -65,6 +65,13 @@ export function parseFunctionList(value: string): CSSFunction[] | null {
 }
 
 /**
+ * Returns true if the value has top-level dividers (`,`, `/` or `:`), e.g. `1px, 2px`.
+ */
+export function hasTopLevelDivider(value: string) {
+  return valueParser(value).nodes.some(node => node.type === 'div');
+}
+
+/**
  * Returns true if the value is a single top-level token (no top-level whitespace or dividers).
  */
 export function isSingleToken(value: string) {

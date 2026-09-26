@@ -204,10 +204,10 @@ different from the one Tailwind applies them in, `skew()` with two angles, etc.
 `rule` is the rule itself and `tailwindClasses` are the classes of its `@apply`. Declarations left as CSS are
 only in `convertedRoot`.
 
-A rule with variants (e.g. `.foo:hover` or `.foo` in a media query) is merged into the preceding `.foo` rule if this
-doesn't change the result. Otherwise a new `.foo` rule is created in its place, so a selector may occur in `nodes`
-several times, e.g. `.foo:hover { color: red } .foo { display: block }` becomes
-`.foo { @apply hover:text-[red] } .foo { @apply block }`.
+Adjacent rules with the same selector are merged. A rule with variants (e.g. `.foo:hover` or `.foo` in a media query)
+is merged into the preceding `.foo` rule if this doesn't change the result. Otherwise a new `.foo` rule is created
+in its place, so a selector may occur in `nodes` several times, e.g. `.foo:hover { color: red } .foo { display: block }`
+becomes `.foo { @apply hover:text-[red] } .foo { @apply block }`.
 
 ## API
 
@@ -233,16 +233,23 @@ several times, e.g. `.foo:hover { color: red } .foo { display: block }` becomes
 - A declaration is converted entirely or not at all. Declarations following an unconverted declaration of the same
   property are not converted, fallbacks (the same property with different values) are kept as CSS.
 - Utilities overridden by later declarations of the same rule are dropped, e.g. `margin-top: 16px; margin: 8px` becomes `m-2`.
-- Rules inside `@keyframes`, `@font-face`, `@page` and other non-style at-rules are never converted.
+- Rules inside `@keyframes`, `@font-face`, `@page` and other non-style at-rules are never converted, as well as rules
+  inside native cascade layers (`@layer` other than `base`, `components` and `utilities`): utilities don't work there.
+- `::marker` and `::selection` are not converted to variants, since Tailwind's `marker:` and `selection:` also style
+  the descendants.
 - `screen and (...)` is converted as `(...)`: the `screen` media type is dropped.
 - Tailwind has no per-side border styles. A side shorthand is converted only with the `solid` style
   (e.g. `border-top: 1px solid` becomes `border-t border-solid border-t-current`), which sets `border-style: solid`
   on all sides, as the Tailwind preflight does. Other styles and `strict` leave the declaration as CSS.
-- Invisible borders are converted idiomatically: `border: none` becomes `border-none` and `border-right: none` becomes
-  `border-r-0`, which don't reset the other parts of the border. They are left as CSS if the following declarations
-  of the rule set these parts.
+- Invisible borders are converted idiomatically: `border: none` becomes `border-none`, `border: none red` becomes
+  `border-none border-[red]` and `border-right: none` becomes `border-r-0`, which don't reset the other parts
+  of the border. They are left as CSS if the following declarations of the rule set these parts.
 - Shorthands reset their omitted parts, so `border: solid red` becomes `border-[medium] border-solid border-[red]`.
-  `transition` doesn't reset `transition-delay` unless `strict` is enabled.
+  `transition` doesn't reset `transition-delay` unless `strict` is enabled, and Tailwind's `transition-*` utilities
+  set a default duration and timing function (e.g. `transition: all` becomes `transition-all`, which animates
+  for 150ms). `text-decoration: underline` becomes `underline`, which doesn't reset the style and the color of the line.
+- Important declarations are converted like with `strict`, since the side effects of important utilities would
+  override the other declarations of the rule (e.g. `font-size: 14px !important` becomes `!text-[length:14px]`).
 - `transform`, `filter` and `backdrop-filter` functions are converted to Tailwind utilities, which compose with the
   functions set by other rules (e.g. `rotate-45 hover:translate-x-1` keeps the rotation on hover). With `strict`
   these declarations are left as CSS.

@@ -35,8 +35,7 @@ export const PSEUDOS_MAPPING = {
   after: 'after',
   'first-letter': 'first-letter',
   'first-line': 'first-line',
-  marker: 'marker',
-  selection: 'selection',
+  // `marker` and `selection` aren't mapped: Tailwind's variants also style the descendants (`& *::marker`)
   'file-selector-button': 'file',
   placeholder: 'placeholder',
   backdrop: 'backdrop',

@@ -181,6 +181,7 @@ export function formatUtilityClass(
  */
 export class UtilitiesPlacement {
   protected targets = new Map<Rule, Target>();
+  protected targetsBySelectorKey = new Map<string, Target[]>();
   protected declarationsCount = 0;
   protected sourcesCount = 0;
   protected selectorKeys = new Map<string, string>();
@@ -245,6 +246,11 @@ export class UtilitiesPlacement {
     return true;
   }
 
+  /** Whether utilities were placed into the rule. */
+  hasUtilities(rule: Rule) {
+    return this.targets.has(rule);
+  }
+
   getNodes(
     formatOptions: FormatOptions,
     isClassApplicable: ClassApplicabilityCheck = () => true
@@ -291,6 +297,11 @@ export class UtilitiesPlacement {
     if (!target) {
       target = { rule, utilities: [], utilitiesByProp: new Map() };
       this.targets.set(rule, target);
+
+      const selectorKey = this.selectorKeyOf(rule.selector);
+      const targets = this.targetsBySelectorKey.get(selectorKey) || [];
+      targets.push(target);
+      this.targetsBySelectorKey.set(selectorKey, targets);
     }
 
     return target;
@@ -315,8 +326,8 @@ export class UtilitiesPlacement {
     this.invalidateEffectiveProps(rule);
   }
 
-  /** Forgets the cached properties of the node and its ancestors. */
-  protected invalidateEffectiveProps(node: Node) {
+  /** Forgets the cached properties of the node and its ancestors (e.g. after removing declarations). */
+  invalidateEffectiveProps(node: Node) {
     let current: Node | undefined = node;
 
     while (current) {
@@ -390,17 +401,17 @@ export class UtilitiesPlacement {
     }
 
     const variantValues = new Set(request.variants.map(v => v.value));
-    const selectorKey = this.selectorKeyOf(request.baseSelector);
+    const targets =
+      this.targetsBySelectorKey.get(this.selectorKeyOf(request.baseSelector)) ||
+      [];
 
-    return Array.from(this.targets.values()).some(
-      target =>
-        this.selectorKeyOf(target.rule.selector) === selectorKey &&
-        target.utilities.some(
-          utility =>
-            isContentUtility(utility) &&
-            pseudoElementOf(utility.variants) === pseudoElement &&
-            utility.variants.every(v => variantValues.has(v.value))
-        )
+    return targets.some(target =>
+      target.utilities.some(
+        utility =>
+          isContentUtility(utility) &&
+          pseudoElementOf(utility.variants) === pseudoElement &&
+          utility.variants.every(v => variantValues.has(v.value))
+      )
     );
   }
 
@@ -485,6 +496,16 @@ export class UtilitiesPlacement {
       isSubset(earlierValues, laterValues) &&
       isSubset(laterValues, earlierValues) &&
       isArbitraryProperty(earlier)
+    ) {
+      return false;
+    }
+
+    // The same variants in a different order (e.g. `focus:hover:` and `hover:focus:`) generate
+    // selectors of equal specificity that Tailwind emits in its own order
+    if (
+      earlierValues.size === laterValues.size &&
+      isSubset(earlierValues, laterValues) &&
+      earlier.variantsKey !== later.variantsKey
     ) {
       return false;
     }

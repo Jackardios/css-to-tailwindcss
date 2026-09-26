@@ -1,4 +1,7 @@
-import type { TailwindConverterConfig } from '../src/TailwindConverter';
+import {
+  TailwindConverter,
+  TailwindConverterConfig,
+} from '../src/TailwindConverter';
 import { convert, normalizeCSS } from './helpers/convert';
 
 /**
@@ -18,6 +21,15 @@ describe('regressions', () => {
         await convert('.a:hover { color: red } .a { display: block }')
       ).toBe(
         normalizeCSS('.a { @apply hover:text-[red]; } .a { @apply block }')
+      );
+      expect(
+        await convert(
+          '.a:hover { color: red } .b { color: green } .a { color: blue }'
+        )
+      ).toBe(
+        normalizeCSS(
+          '.a { @apply hover:text-[red]; } .b { @apply text-[green] } .a { @apply text-[blue] }'
+        )
       );
     });
 
@@ -650,7 +662,7 @@ describe('regressions', () => {
       ],
       // arbitrary properties are emitted after the other utilities with the same variants
       [
-        '.a:hover { border-top: 1px dashed } .a:hover { border-top-width: 2px }',
+        '.a:hover { border-top: 1px dashed } /* not adjacent */ .a:hover { border-top-width: 2px }',
         '.a { @apply hover:[border-top:1px_dashed] } .a { @apply hover:border-t-2 }',
         { arbitraryPropertiesIsEnabled: true },
       ],
@@ -742,7 +754,7 @@ describe('regressions', () => {
       ],
       // escapes in the base selector
       ['.w-1\\/2:hover { margin-top: 4px }', '.w-1\\/2 { @apply hover:mt-1 }'],
-      ['.\\32xl:hover { margin-top: 4px }', '.\\32 xl { @apply hover:mt-1 }'],
+      ['.\\32xl:hover { margin-top: 4px }', '.\\32xl { @apply hover:mt-1 }'],
       // attribute values
       [
         '.a[data-x="a  b"] { margin-top: 4px }',
@@ -898,5 +910,141 @@ describe('regressions', () => {
         expect(await convert(css)).toBe(normalizeCSS(expected));
       }
     );
+  });
+
+  describe('second review', () => {
+    it.each<[string, string, string, Partial<TailwindConverterConfig>?]>([
+      [
+        'checks classes of the file when a rule with a variant stays in place',
+        '.float-left { color: blue } .b::before { float: left }',
+        '.float-left { @apply text-[blue] } .b::before { float: left }',
+      ],
+      [
+        'allows classes of the file with variants',
+        '.block { color: blue } .b:hover { display: block }',
+        '.block { @apply text-[blue] } .b { @apply hover:block }',
+      ],
+      [
+        'does not reset the width of an invisible border',
+        '.btn { border: none rgba(0,0,0,0) } .group .btn { border-right: 1px solid rgba(0,0,0,.2) }',
+        '.btn { @apply border-none border-[rgba(0,0,0,0)] } .group .btn { @apply border-r-[rgba(0,0,0,0.2)] border-r border-solid }',
+      ],
+      [
+        'keeps an invisible border followed by its width',
+        '.a { border: none red; border-width: 2px }',
+        '.a { border: none red; border-width: 2px }',
+      ],
+      [
+        'keeps values that are names of Object.prototype properties',
+        '.a { flex: constructor; font-weight: __proto__; color: __proto__ }',
+        '.a { flex: constructor; font-weight: __proto__; color: __proto__ }',
+      ],
+      [
+        'merges adjacent rules with the same selector, so that side effects are ordered as in one rule',
+        '.a { line-height: 2 } .a { font-size: 14px } .b { transition-duration: 1s } .b { transition-property: opacity }',
+        '.a { @apply leading-loose text-sm } .b { @apply duration-1000 transition-opacity }',
+      ],
+      [
+        'does not merge adjacent rules setting the same properties',
+        '.a { width: 13px !important } .a { width: 4px }',
+        '.a { @apply !w-[13px] } .a { @apply w-1 }',
+      ],
+      [
+        'does not merge rules over a rule setting the side effects of their utilities',
+        '.a { color: red } .b { font-size: 14px } .a { line-height: 2 }',
+        '.a { @apply text-[red] } .b { @apply text-sm } .a { @apply leading-loose }',
+      ],
+      [
+        'uses exact utilities for important declarations',
+        '.a { font-size: 14px !important; line-height: 2 }',
+        '.a { @apply !text-[length:14px] leading-loose }',
+      ],
+      [
+        'does not merge the same variants in a different order',
+        '.a:focus:hover { margin-left: 13px } .a:hover:focus { margin: 19px }',
+        '.a { @apply focus:hover:ml-[13px] } .a { @apply hover:focus:m-[19px] }',
+      ],
+      [
+        'keeps the base selector as written',
+        '1abc { &:hover { color: blue } color: red }',
+        '1abc { @apply hover:text-[blue] } 1abc { @apply text-[red] }',
+        { postCSSPlugins: [require('postcss-nested')] },
+      ],
+      [
+        'keeps values with dividers',
+        '.a { border-width: 1px, 2px } .b { border: 1px, solid }',
+        '.a { border-width: 1px, 2px } .b { border: 1px, solid }',
+      ],
+      [
+        'keeps a border shorthand with a variable that may stand for several parts',
+        '.a { border: var(--w) solid } .b { border: 1px var(--rest) } .c { border: 1px solid var(--c) }',
+        '.a { border: var(--w) solid } .b { border: 1px var(--rest) } .c { @apply border border-[color:var(--c)] border-solid }',
+      ],
+      [
+        'does not use variants styling descendants',
+        'ul::marker { color: red } .a::selection { color: red }',
+        'ul::marker { @apply text-[red] } .a::selection { @apply text-[red] }',
+      ],
+      [
+        'does not convert rules in native cascade layers',
+        '@layer x { .a { transform: rotate(45deg) } }',
+        '@layer x { .a { transform: rotate(45deg) } }',
+      ],
+      [
+        'keeps the text-decoration shorthand with strict',
+        '.a:hover { text-decoration: line-through }',
+        '.a:hover { text-decoration: line-through }',
+        { strict: true },
+      ],
+    ])('%s', async (_, css, expected, config = {}) => {
+      expect(await convert(css, config)).toBe(normalizeCSS(expected));
+    });
+
+    it('converts rules in the layers of Tailwind', async () => {
+      const converter = new TailwindConverter({
+        tailwindConfig: { content: [] },
+      });
+      const { convertedRoot } = await converter.convertCSS(
+        '@layer components { .a { transform: rotate(45deg) } }'
+      );
+
+      expect(normalizeCSS(convertedRoot.toString())).toBe(
+        normalizeCSS('@layer components { .a { @apply rotate-45 } }')
+      );
+    });
+
+    it('checks classes of the file in the 1.x conversion used by subclasses', async () => {
+      class CustomConverter extends TailwindConverter {
+        protected makeTailwindNode(
+          ...args: Parameters<TailwindConverter['makeTailwindNode']>
+        ) {
+          return super.makeTailwindNode(...args);
+        }
+      }
+      const converter = new CustomConverter({
+        tailwindConfig: { content: [] },
+      });
+      const { convertedRoot } = await converter.convertCSS(
+        '.float-left { color: blue } .b { float: left }'
+      );
+
+      expect(normalizeCSS(convertedRoot.toString())).toBe(
+        normalizeCSS('.float-left { @apply text-[blue] } .b { float: left }')
+      );
+    });
+
+    it('keeps deeply nested values and handles long whitespace', async () => {
+      const deep = 'calc('.repeat(3000) + '1px' + ')'.repeat(3000);
+      const spaces = ' '.repeat(100000);
+      const converter = new TailwindConverter({
+        tailwindConfig: { content: [] },
+      });
+
+      await expect(
+        converter.convertCSS(
+          `.a { margin: ${deep}; border: ${deep}; color: a${spaces}b; padding: var(--a${spaces}) }`
+        )
+      ).resolves.toBeDefined();
+    });
   });
 });
