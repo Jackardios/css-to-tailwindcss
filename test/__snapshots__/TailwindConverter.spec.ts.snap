@@ -29,16 +29,16 @@ exports[`TailwindConverter should convert border width on shorthand correctly 1`
     @apply border-[rgba(148,163,184,0.1)] border-2;
 }
 .c {
-    @apply border-b-[3px] border-[rgba(148,163,184,0.1)] border-t;
+    @apply border-b-[3px] border-x-0 border-[rgba(148,163,184,0.1)] border-t;
 }
 .d {
-    @apply border-b-2 border-[rgba(148,163,184,0.1)] border-t;
+    @apply border-b-2 border-x-0 border-[rgba(148,163,184,0.1)] border-t;
 }
 .f {
     @apply border-l-[4.5em] border-r-[3px] border-b-2 border-[rgba(148,163,184,0.1)] border-t;
 }
 .g {
-    @apply border-w-[4.5em] border-solid;
+    @apply border-[4.5em] border-solid;
 }
 .h {
     @apply border-x-2 border-[rgba(148,163,184,0.1)] border-y;

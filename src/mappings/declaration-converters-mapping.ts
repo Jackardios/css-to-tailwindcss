@@ -106,12 +106,44 @@ function convertSizeDeclarationValue(
   );
 }
 
+/**
+ * Splits a value by whitespace outside parentheses, e.g. `calc(1px + 1px) solid rgb(0 0 0)`.
+ */
+function splitValueBySpaces(value: string) {
+  const tokens: string[] = [];
+  let depth = 0;
+  let current = '';
+
+  for (const char of value.trim()) {
+    if (char === '(') {
+      depth++;
+    } else if (char === ')') {
+      depth = Math.max(0, depth - 1);
+    }
+
+    if (/\s/.test(char) && depth === 0) {
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+    } else {
+      current += char;
+    }
+  }
+
+  if (current) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}
+
 function convertBorderDeclarationValue(
   value: string,
   config: ResolvedTailwindConverterConfig,
   classPrefix: string
 ) {
-  const tokens = value.trim().split(/\s+/m);
+  const tokens = splitValueBySpaces(value);
   let width = '';
   let style = '';
   let color = '';
@@ -131,18 +163,29 @@ function convertBorderDeclarationValue(
 
   function isLength(value: string): boolean {
     return (
-      /^[-+]?\d*\.?\d*(px|em|rem|ch|vw|vh|%)?$|^0$/.test(value) ||
-      ['thin', 'medium', 'thick'].includes(value)
+      /^[-+]?(\d+\.?\d*|\.\d+)([a-z]+|%)?$/i.test(value) ||
+      /^(calc|min|max|clamp)\(/i.test(value) ||
+      ['thin', 'medium', 'thick'].includes(value.toLowerCase())
     );
   }
 
   for (const token of tokens) {
-    if (borderStyles.has(token)) {
-      style = token;
+    if (borderStyles.has(token.toLowerCase())) {
+      if (style) {
+        return [];
+      }
+      style = token.toLowerCase();
     } else if (isLength(token)) {
-      width = token;
+      if (width) {
+        return [];
+      }
+      // Tailwind recognizes lowercase units only, e.g. `1px` but not `1PX`
+      width = /^[-+.\d]/.test(token) ? token.toLowerCase() : token;
     } else {
-      color += (color ? ' ' : '') + token;
+      if (color) {
+        return [];
+      }
+      color = token;
     }
   }
 
@@ -152,26 +195,16 @@ function convertBorderDeclarationValue(
     if (!config.tailwindConfig.corePlugins.borderWidth) {
       return [];
     }
-    const widthClasses = convertSizeDeclarationValue(
-      width,
-      config.mapping.borderWidth,
-      classPrefix,
-      config.remInPx,
-      false,
-      'length'
-    );
-
-    // Handle arbitrary values for border width
+    // Tailwind recognizes lengths in arbitrary values, e.g. `border-[4.5em]` sets the width
     classes = classes.concat(
-      widthClasses.map(cls => {
-        if (cls.includes('[') && cls.includes(']')) {
-          // Only add 'w-' for the general 'border' case
-          return classPrefix === 'border'
-            ? cls.replace(`${classPrefix}-[`, `${classPrefix}-w-[`)
-            : cls;
-        }
-        return cls;
-      })
+      convertSizeDeclarationValue(
+        width,
+        config.mapping.borderWidth,
+        classPrefix,
+        config.remInPx,
+        false,
+        'length'
+      )
     );
   }
 
@@ -265,50 +298,83 @@ function convertBorderWidthDeclaration(
   value: string,
   config: ResolvedTailwindConverterConfig
 ) {
-  const values = value.trim().split(/\s+/);
+  const values = splitValueBySpaces(value);
   const borderWidthMap = config.mapping.borderWidth;
   const remInPx = config.remInPx;
 
   let classes: string[] = [];
 
+  if (values.length > 1 && values.some(item => /var\(/i.test(item))) {
+    // A variable may stand for several values
+    return [];
+  }
+
   if (values.length === 1) {
     // Applies to all sides
     classes = classes.concat(
-      convertSizeDeclarationValue(values[0], borderWidthMap, 'border', remInPx)
+      convertSizeDeclarationValue(
+        values[0],
+        borderWidthMap,
+        'border',
+        remInPx,
+        false,
+        'length'
+      )
     );
   } else if (values.length === 2) {
     // [vertical, horizontal]
     const [vertical, horizontal] = values;
     classes = classes.concat(
-      convertSizeDeclarationValue(vertical, borderWidthMap, 'border-y', remInPx)
+      convertSizeDeclarationValue(
+        vertical,
+        borderWidthMap,
+        'border-y',
+        remInPx,
+        false,
+        'length'
+      )
     );
-    if (horizontal !== '0' && horizontal !== '0px') {
-      classes = classes.concat(
-        convertSizeDeclarationValue(
-          horizontal,
-          borderWidthMap,
-          'border-x',
-          remInPx
-        )
-      );
-    }
+    classes = classes.concat(
+      convertSizeDeclarationValue(
+        horizontal,
+        borderWidthMap,
+        'border-x',
+        remInPx,
+        false,
+        'length'
+      )
+    );
   } else if (values.length === 3) {
     // [top, horizontal, bottom]
     const [top, horizontal, bottom] = values;
     classes = classes.concat(
-      convertSizeDeclarationValue(top, borderWidthMap, 'border-t', remInPx),
-      convertSizeDeclarationValue(bottom, borderWidthMap, 'border-b', remInPx)
+      convertSizeDeclarationValue(
+        top,
+        borderWidthMap,
+        'border-t',
+        remInPx,
+        false,
+        'length'
+      ),
+      convertSizeDeclarationValue(
+        bottom,
+        borderWidthMap,
+        'border-b',
+        remInPx,
+        false,
+        'length'
+      )
     );
-    if (horizontal !== '0' && horizontal !== '0px') {
-      classes = classes.concat(
-        convertSizeDeclarationValue(
-          horizontal,
-          borderWidthMap,
-          'border-x',
-          remInPx
-        )
-      );
-    }
+    classes = classes.concat(
+      convertSizeDeclarationValue(
+        horizontal,
+        borderWidthMap,
+        'border-x',
+        remInPx,
+        false,
+        'length'
+      )
+    );
   } else if (values.length === 4) {
     // [top, right, bottom, left]
     const [top, right, bottom, left] = values;
@@ -316,54 +382,71 @@ function convertBorderWidthDeclaration(
     // Check if vertical sides are the same
     if (top === bottom) {
       classes = classes.concat(
-        convertSizeDeclarationValue(top, borderWidthMap, 'border-y', remInPx)
+        convertSizeDeclarationValue(
+          top,
+          borderWidthMap,
+          'border-y',
+          remInPx,
+          false,
+          'length'
+        )
       );
     } else {
-      if (top !== '0' && top !== '0px') {
-        classes = classes.concat(
-          convertSizeDeclarationValue(top, borderWidthMap, 'border-t', remInPx)
-        );
-      }
-      if (bottom !== '0' && bottom !== '0px') {
-        classes = classes.concat(
-          convertSizeDeclarationValue(
-            bottom,
-            borderWidthMap,
-            'border-b',
-            remInPx
-          )
-        );
-      }
+      classes = classes.concat(
+        convertSizeDeclarationValue(
+          top,
+          borderWidthMap,
+          'border-t',
+          remInPx,
+          false,
+          'length'
+        )
+      );
+      classes = classes.concat(
+        convertSizeDeclarationValue(
+          bottom,
+          borderWidthMap,
+          'border-b',
+          remInPx,
+          false,
+          'length'
+        )
+      );
     }
 
     // Check if horizontal sides are the same
     if (right === left) {
-      if (right !== '0' && right !== '0px') {
-        classes = classes.concat(
-          convertSizeDeclarationValue(
-            right,
-            borderWidthMap,
-            'border-x',
-            remInPx
-          )
-        );
-      }
+      classes = classes.concat(
+        convertSizeDeclarationValue(
+          right,
+          borderWidthMap,
+          'border-x',
+          remInPx,
+          false,
+          'length'
+        )
+      );
     } else {
-      if (right !== '0' && right !== '0px') {
-        classes = classes.concat(
-          convertSizeDeclarationValue(
-            right,
-            borderWidthMap,
-            'border-r',
-            remInPx
-          )
-        );
-      }
-      if (left !== '0' && left !== '0px') {
-        classes = classes.concat(
-          convertSizeDeclarationValue(left, borderWidthMap, 'border-l', remInPx)
-        );
-      }
+      classes = classes.concat(
+        convertSizeDeclarationValue(
+          right,
+          borderWidthMap,
+          'border-r',
+          remInPx,
+          false,
+          'length'
+        )
+      );
+      classes = classes.concat(
+        convertSizeDeclarationValue(
+          left,
+          borderWidthMap,
+          'border-l',
+          remInPx,
+          false,
+          'length'
+        )
+      );
     }
   } else {
     // Invalid number of values

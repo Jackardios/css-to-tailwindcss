@@ -677,6 +677,7 @@ describe('TailwindConverter', () => {
         rule: expect.objectContaining({ selector: '.c' }),
         tailwindClasses: [
           'border-b-[3px]',
+          'border-x-0',
           'border-[rgba(148,163,184,0.1)]',
           'border-t',
         ],
@@ -685,6 +686,7 @@ describe('TailwindConverter', () => {
         rule: expect.objectContaining({ selector: '.d' }),
         tailwindClasses: [
           'border-b-2',
+          'border-x-0',
           'border-[rgba(148,163,184,0.1)]',
           'border-t',
         ],
@@ -701,7 +703,7 @@ describe('TailwindConverter', () => {
       },
       {
         rule: expect.objectContaining({ selector: '.g' }),
-        tailwindClasses: ['border-w-[4.5em]', 'border-solid'],
+        tailwindClasses: ['border-[4.5em]', 'border-solid'],
       },
       {
         rule: expect.objectContaining({ selector: '.h' }),
@@ -710,6 +712,36 @@ describe('TailwindConverter', () => {
           'border-[rgba(148,163,184,0.1)]',
           'border-y',
         ],
+      },
+    ]);
+  });
+
+  it('should convert border width values that contain functions or variables', async () => {
+    const converter = createTailwindConverter();
+    const converted = await converter.convertCSS(`
+      .a {
+        border: calc(1px + 1px) solid red;
+      }
+      .b {
+        border-width: var(--width);
+      }
+      .c {
+        border-width: var(--width) 0;
+      }
+    `);
+
+    expect(converted.nodes).toEqual([
+      {
+        rule: expect.objectContaining({ selector: '.a' }),
+        tailwindClasses: [
+          'border-[calc(1px_+_1px)]',
+          'border-solid',
+          'border-[red]',
+        ],
+      },
+      {
+        rule: expect.objectContaining({ selector: '.b' }),
+        tailwindClasses: ['border-[length:var(--width)]'],
       },
     ]);
   });
