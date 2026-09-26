@@ -117,3 +117,6 @@ dist
 
 # Compiled code
 lib/
+
+# macOS
+.DS_Store
