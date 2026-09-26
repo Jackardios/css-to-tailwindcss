@@ -79,6 +79,7 @@ export class TailwindConverter {
   async convertCSS(css: string) {
     const nodesManager = new TailwindNodesManager();
     const parsed = await postcss(this.config.postCSSPlugins).process(css, {
+      from: undefined,
       parser: postcssSafeParser,
     });
 
