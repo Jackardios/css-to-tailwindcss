@@ -19,6 +19,10 @@ jobs:
       actions: read
       contents: read
       security-events: write
+    strategy:
+      matrix:
+        # the matrix sets the category of the analysis, `/language:javascript`
+        language: [javascript]
 
     steps:
       - name: Checkout repository
@@ -27,7 +31,7 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
-          languages: javascript-typescript
+          languages: ${{ matrix.language }}
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2

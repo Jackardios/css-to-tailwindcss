@@ -757,8 +757,12 @@ describe('regressions', () => {
       ['.\\32xl:hover { margin-top: 4px }', '.\\32xl { @apply hover:mt-1 }'],
       // attribute values
       [
+        '.a[data-x="a b_c"] { margin-top: 4px }',
+        '.a { @apply data-[x="a_b\\_c"]:mt-1 }',
+      ],
+      [
         '.a[data-x="a  b"] { margin-top: 4px }',
-        '.a { @apply data-[x="a__b"]:mt-1 }',
+        '.a[data-x="a  b"] { @apply mt-1 }',
       ],
       [
         '.a[data-x="-1"] { margin-top: 4px }',

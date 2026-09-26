@@ -27,6 +27,7 @@ import {
 } from './utils/converterMappingByTailwindTheme';
 import {
   convertDeclarationValue,
+  escapeArbitraryValue,
   prepareArbitraryValue,
   DECLARATION_CONVERTERS_MAPPING,
   DECLARATION_UTILITIES_CONVERTERS_MAPPING,
@@ -938,7 +939,7 @@ export class TailwindConverter {
       return null;
     }
 
-    return `[@${name}_${trimmed.replace(/_/g, '\\_').replace(/\s+/g, '_')}]`;
+    return `[@${name}_${escapeArbitraryValue(trimmed)}]`;
   }
 
   protected isDarkModeMedia() {
@@ -1091,9 +1092,10 @@ export class TailwindConverter {
       return `${variantPrefix}-[${attribute}]`;
     }
 
+    // Tailwind collapses spaces in arbitrary variants
     if (
       selector.action !== 'equals' ||
-      /[[\]\\]|[^\S ]/.test(selector.value) ||
+      /[[\]\\]|[^\S ]| {2}/.test(selector.value) ||
       UNSAFE_ARBITRARY_VARIANT_REGEXP.test(selector.value)
     ) {
       return null;
@@ -1101,11 +1103,9 @@ export class TailwindConverter {
 
     const value = /^(?:-?[a-z_]|--)[\w-]*$/i.test(selector.value)
       ? selector.value
-      : `"${selector.value.replace(/"/g, '\\"')}"`;
+      : `"${selector.value.replace(/["\\]/g, '\\$&')}"`;
 
-    return `${variantPrefix}-[${attribute}=${value
-      .replace(/_/g, '\\_')
-      .replace(/ /g, '_')}]`;
+    return `${variantPrefix}-[${attribute}=${escapeArbitraryValue(value)}]`;
   }
 
   protected cleanRaws(root: Root | Document) {

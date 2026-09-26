@@ -19,8 +19,16 @@ import { getOwn } from '../utils/getOwn';
 import { isCSSWideKeyword } from '../utils/isCSSWideKeyword';
 import { isTimeValue, normalizeTimeValue } from '../utils/normalizeTimeValue';
 
+/**
+ * Escapes a value for an arbitrary value or variant: Tailwind reads `_` as a space and `\_` as `_`,
+ * and keeps other backslashes as is.
+ */
+export function escapeArbitraryValue(value: string) {
+  return value.replace(/_|\s+/g, match => (match === '_' ? '\\_' : '_'));
+}
+
 export function prepareArbitraryValue(value: string) {
-  return normalizeValue(value).replace(/_/g, '\\_').replace(/\s+/g, '_');
+  return escapeArbitraryValue(normalizeValue(value));
 }
 
 type CSSDataType =
