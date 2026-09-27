@@ -38,9 +38,9 @@ jobs:
         run: |
           node -e "
             const branches = require('./package.json').release.branches;
-            const next = branches.find((b) => typeof b === 'object' && b.name === 'next');
-            if (!next || next.prerelease !== true) {
-              console.error('release.branches must contain { name: \"next\", prerelease: true }');
+            const next = branches.find((b) => b === 'next' || b.name === 'next');
+            if (next && next.prerelease !== true) {
+              console.error('release.branches: next must be { name: \"next\", prerelease: true }');
               process.exit(1);
             }
           "

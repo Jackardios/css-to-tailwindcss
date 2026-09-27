@@ -35,7 +35,7 @@
 - [ ] This pull request links relevant issues as `Fixes #0000`
 - [ ] There are new or updated unit tests validating the change
 - [ ] Documentation has been updated to reflect this change
-- [ ] The PR title follows the [conventional commit spec](https://www.conventionalcommits.org/en/v1.0.0/). PRs are squash-merged, so the title's type decides the release: `feat` → minor, `fix`/`perf` → patch, other types → no release
+- [ ] The PR title follows the [conventional commit spec](https://www.conventionalcommits.org/en/v1.0.0/). PRs are squash-merged, so the title's type decides the release: `feat` → minor, `fix`/`perf` → patch, other types → no release. To revert a released change, title it `fix: revert …`
 
 <!--
   🎉 Thank you for contributing!
