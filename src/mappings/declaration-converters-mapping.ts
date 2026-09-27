@@ -968,6 +968,13 @@ const FONT_WEIGHT_KEYWORDS: Record<string, string> = {
   bold: '700',
 };
 
+// CSS defines the keywords as these lengths
+const LINE_WIDTH_KEYWORDS: Record<string, string> = {
+  thin: '1px',
+  medium: '3px',
+  thick: '5px',
+};
+
 type DeclarationConverter = (
   declaration: Declaration,
   config: ResolvedTailwindConverterConfig
@@ -2398,7 +2405,9 @@ export const DECLARATION_CONVERTERS_MAPPING: DeclarationConvertersMapping = {
   'outline-width': (declaration, config) =>
     config.tailwindConfig.corePlugins.outlineWidth
       ? convertSizeDeclarationValue(
-          declaration.value,
+          // `outline-[thick]` sets `outline-color`
+          getOwn(LINE_WIDTH_KEYWORDS, declaration.value.trim().toLowerCase()) ||
+            declaration.value,
           config.mapping.outlineWidth,
           'outline',
           config.remInPx,

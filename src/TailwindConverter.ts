@@ -61,7 +61,12 @@ import {
   selectorClassNames,
   stringifySelector,
 } from './core/selector';
-import { escapeArbitraryValue, isBalancedValue } from './core/values';
+import {
+  escapeArbitraryValue,
+  isBalancedValue,
+  splitByTopLevelCommas,
+  splitBySpaces,
+} from './core/values';
 
 export interface TailwindConverterConfig {
   /** The size of `1rem` in px to match `rem` values with the theme, `null` disables the matching. */
@@ -127,13 +132,28 @@ function isPseudoElement(selector: Selector) {
   );
 }
 
+interface DeclaredProperties {
+  all: Set<string>;
+  important: Set<string>;
+  normal: Set<string>;
+}
+
 /** The longhands set by a rule, or `null` if it contains anything but declarations and comments. */
-function declaredProperties(rule: Rule) {
-  const properties = new Set<string>();
+function declaredProperties(rule: Rule): DeclaredProperties | null {
+  const properties: DeclaredProperties = {
+    all: new Set(),
+    important: new Set(),
+    normal: new Set(),
+  };
 
   for (const child of rule.nodes) {
     if (child.type === 'decl') {
-      longhandsOf(child.prop).forEach(property => properties.add(property));
+      const group = child.important ? properties.important : properties.normal;
+
+      longhandsOf(child.prop).forEach(property => {
+        properties.all.add(property);
+        group.add(property);
+      });
     } else if (child.type !== 'comment') {
       return null;
     }
@@ -158,6 +178,8 @@ export class TailwindConverter {
   protected config: ResolvedTailwindConverterConfig;
   /** Class names used in the selectors of the file being converted. */
   private fileClassNames = new Set<string>();
+  /** Names of the keyframes defined in the file being converted. */
+  private fileKeyframes = new Set<string>();
 
   constructor({
     tailwindConfig,
@@ -212,13 +234,13 @@ export class TailwindConverter {
     const rules: Rule[] = [];
     // the longhands of the rules consisting of declarations only (`null` for other rules),
     // cached so that merging a run of rules takes linear time
-    const properties = new Map<Rule, Set<string> | null>();
+    const properties = new Map<Rule, DeclaredProperties | null>();
     const propertiesOf = (rule: Rule) => {
       if (!properties.has(rule)) {
         properties.set(rule, declaredProperties(rule));
       }
 
-      return properties.get(rule) as Set<string> | null;
+      return properties.get(rule) as DeclaredProperties | null;
     };
     parsed.root.walkRules((rule, index) => {
       const prev = rule.parent?.nodes[index - 1];
@@ -227,9 +249,15 @@ export class TailwindConverter {
         prev?.type === 'rule' &&
         this.canMergeAdjacentRules(prev, rule, propertiesOf)
       ) {
-        propertiesOf(rule)?.forEach(property =>
-          propertiesOf(prev)?.add(property)
-        );
+        const ruleProperties = propertiesOf(rule);
+        const prevProperties = propertiesOf(prev);
+        if (ruleProperties && prevProperties) {
+          (['all', 'important', 'normal'] as const).forEach(group =>
+            ruleProperties[group].forEach(property =>
+              prevProperties[group].add(property)
+            )
+          );
+        }
         prev.append(rule.nodes);
         rule.remove();
       } else {
@@ -242,6 +270,12 @@ export class TailwindConverter {
     rules.forEach(rule => {
       selectorClassNames(rule.selector).forEach(className =>
         this.fileClassNames.add(className)
+      );
+    });
+    this.fileKeyframes = new Set();
+    parsed.root.walkAtRules(/keyframes$/i, atRule => {
+      this.fileKeyframes.add(
+        atRule.params.trim().replace(/^(['"])(.*)\1$/, '$2')
       );
     });
 
@@ -305,11 +339,13 @@ export class TailwindConverter {
    * Adjacent rules with the same selector and without variants are merged, so that the side effects
    * of utilities (e.g. `line-height` of `text-sm`) are resolved as in a single rule. Rules setting
    * the same properties are not merged: the declarations would become fallbacks of each other.
+   * Except when an important declaration is followed by a normal one: Tailwind merges such rules
+   * as well and keeps the last of the duplicate declarations regardless of `!important`.
    */
   private canMergeAdjacentRules(
     prev: Rule,
     rule: Rule,
-    propertiesOf: (rule: Rule) => Set<string> | null
+    propertiesOf: (rule: Rule) => DeclaredProperties | null
   ) {
     if (
       normalizeSelectorKey(prev.selector) !==
@@ -326,7 +362,8 @@ export class TailwindConverter {
     return (
       !!prevProperties &&
       !!ruleProperties &&
-      !propertiesIntersect(ruleProperties, prevProperties)
+      (!propertiesIntersect(ruleProperties.all, prevProperties.all) ||
+        propertiesIntersect(ruleProperties.normal, prevProperties.important))
     );
   }
 
@@ -569,56 +606,92 @@ export class TailwindConverter {
         );
       });
 
-    const orderSensitiveProps = new Set<string>();
-    const planned: PlannedDeclaration[] = [];
+    const plan = (blocked: Set<number>) => {
+      const orderSensitiveProps = new Set<string>();
+      const planned: PlannedDeclaration[] = [];
 
-    declarations.forEach((declaration, index) => {
-      const declarationProps = declarationsProps[index];
-      let utilities = candidates[index];
+      declarations.forEach((declaration, index) => {
+        const declarationProps = declarationsProps[index];
+        let utilities = candidates[index];
 
-      if (
-        index >= declarationsBeforeAtRule ||
-        propertiesIntersect(declarationProps, orderSensitiveProps) ||
-        !utilities.every(utility =>
-          isUtilityAllowed(utility, !!declaration.important)
-        ) ||
-        (utilities.some(utility => utility.partial) &&
-          declarationsProps
-            .slice(index + 1)
-            .some(laterProps =>
-              propertiesIntersect(laterProps, declarationProps)
-            )) ||
-        !hasAllowedSideEffects(index)
-      ) {
-        utilities = [];
-      }
+        if (
+          blocked.has(index) ||
+          index >= declarationsBeforeAtRule ||
+          propertiesIntersect(declarationProps, orderSensitiveProps) ||
+          !utilities.every(utility =>
+            isUtilityAllowed(utility, !!declaration.important)
+          ) ||
+          (utilities.some(utility => utility.partial) &&
+            declarationsProps
+              .slice(index + 1)
+              .some(laterProps =>
+                propertiesIntersect(laterProps, declarationProps)
+              )) ||
+          !hasAllowedSideEffects(index)
+        ) {
+          utilities = [];
+        }
 
-      const isArbitraryProperty = utilities.some(
-        utility => utility.className[0] === '['
+        const isArbitraryProperty = utilities.some(
+          utility => utility.className[0] === '['
+        );
+
+        if (!utilities.length || isArbitraryProperty) {
+          // Unconverted declarations stay after `@apply`, and arbitrary properties are placed
+          // after all other utilities by Tailwind, so the following overlapping declarations can't be converted
+          declarationProps.forEach(p => orderSensitiveProps.add(p));
+        }
+
+        if (!utilities.length) {
+          return;
+        }
+
+        planned.push({
+          declaration,
+          converted: {
+            declarationProps,
+            overriddenProps: definiteLonghandsOf(declaration.prop),
+            important: !!declaration.important,
+            utilities,
+          },
+        });
+      });
+
+      return planned;
+    };
+
+    // Tailwind keeps the last of duplicate declarations regardless of `!important`, so important utilities
+    // can't be followed by remaining declarations of a property they may generate (the property itself or its longhand)
+    const blocked = new Set<number>();
+    for (;;) {
+      const planned = plan(blocked);
+      const convertedDeclarations = new Set(
+        planned.map(item => item.declaration)
+      );
+      const remainingProps = new Set<string>();
+      declarations.forEach(declaration => {
+        if (!declaration.important && !convertedDeclarations.has(declaration)) {
+          remainingProps.add(declaration.prop.toLowerCase());
+        }
+      });
+
+      const overridden = planned.filter(
+        ({ declaration, converted }) =>
+          converted.important &&
+          (remainingProps.has(declaration.prop.toLowerCase()) ||
+            converted.utilities.some(utility =>
+              propertiesIntersect(utility.props, remainingProps)
+            ))
       );
 
-      if (!utilities.length || isArbitraryProperty) {
-        // Unconverted declarations stay after `@apply`, and arbitrary properties are placed
-        // after all other utilities by Tailwind, so the following overlapping declarations can't be converted
-        declarationProps.forEach(p => orderSensitiveProps.add(p));
+      if (!overridden.length) {
+        return planned;
       }
 
-      if (!utilities.length) {
-        return;
-      }
-
-      planned.push({
-        declaration,
-        converted: {
-          declarationProps,
-          overriddenProps: definiteLonghandsOf(declaration.prop),
-          important: !!declaration.important,
-          utilities,
-        },
-      });
-    });
-
-    return planned;
+      overridden.forEach(item =>
+        blocked.add(declarations.indexOf(item.declaration))
+      );
+    }
   }
 
   /**
@@ -707,16 +780,40 @@ export class TailwindConverter {
     config: ResolvedTailwindConverterConfig
   ) {
     const classes =
-      getOwn(DECLARATION_CONVERTERS_MAPPING, declaration.prop)?.(
-        declaration,
-        config
-      ) || [];
+      (!this.usesOtherKeyframes(declaration) &&
+        getOwn(DECLARATION_CONVERTERS_MAPPING, declaration.prop)?.(
+          declaration,
+          config
+        )) ||
+      [];
 
     if (classes.length === 0 && this.canMakeArbitraryProperty(declaration)) {
       return [this.makeArbitraryProperty(declaration)];
     }
 
     return classes;
+  }
+
+  /**
+   * `animate-*` utilities add Tailwind's keyframes (with the prefix in their names) for the animations
+   * of the theme, while the source may refer to the keyframes of the file or to other ones with the same name.
+   */
+  private usesOtherKeyframes(declaration: Declaration) {
+    if (declaration.prop !== 'animation') {
+      return false;
+    }
+
+    // the theme is resolved, so its keyframes are an object
+    const themeKeyframes = (this.config.tailwindConfig.theme?.keyframes ||
+      {}) as Record<string, unknown>;
+
+    return splitByTopLevelCommas(declaration.value).some(animation =>
+      splitBySpaces(animation).some(
+        token =>
+          getOwn(themeKeyframes, token) !== undefined &&
+          (this.fileKeyframes.has(token) || !!this.config.tailwindConfig.prefix)
+      )
+    );
   }
 
   private canMakeArbitraryProperty(declaration: Declaration) {
@@ -868,6 +965,13 @@ export class TailwindConverter {
     const baseSelector =
       rawSelectorPrefix(rawSelector, [baseSelectors]) ??
       stringifySelector([baseSelectors]);
+
+    // Tailwind puts pseudo-classes of the variants before `file:` after `::file-selector-button`
+    // (`hover:file:` styles the hovered button), so `file:` goes first
+    const fileVariant = variants.find(variant => variant.value === 'file');
+    if (fileVariant) {
+      variants = [fileVariant, ...variants.filter(v => v !== fileVariant)];
+    }
 
     return baseSelector === null ? null : { baseSelector, variants };
   }
