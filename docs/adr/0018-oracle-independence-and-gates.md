@@ -41,7 +41,7 @@ days); without explicit exit criteria it can drift or ship half-done.
 | Cold start to the first rule, Node | ≤ 300 ms with the probe map (ADR-4); ≤ 450 ms without |
 | Cold start, browser | ≤ 400 ms |
 | Warm path | median ≤ 0.5 ms per rule, p95 ≤ 5 ms |
-| First touch of a shard | ≤ 50 ms (≤ 150 ms if the value-directed lookup is dropped) |
+| First touch of a shard | ≤ 50 ms (spike S2 measured a 7 ms maximum for colours and shadows) |
 | Heap after GC | ≤ 100 MB |
 | Linearity | t(32k rules) / t(16k rules) ≤ 2.3 |
 | Core + Tailwind 4 adapter | ≤ 150 KB gzip |

@@ -15,6 +15,8 @@ classes but none that overrides another. The solver needs one ordering.
 - The solver minimizes, in this order: the number of arbitrary values, the number of classes, the number of overridden
   parts, the total length.
 - Solutions with overridden parts are reported with `overlapping-classes`.
+- Between equivalent names, ranking data prefers the one that names the effect: `shadow-none` over `ring-0`,
+  `filter-none` over `blur-none`, `bg-linear-to-r` over `bg-linear-90`.
 - The bounded search stops at 50,000 visited nodes; a test pins the limit (ADR-19).
 - This is revisited when the solver gets branch-and-bound pruning. An `avoidOverrides` option may be added then.
 

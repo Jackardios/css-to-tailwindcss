@@ -16,6 +16,8 @@ not on theme values. Two projects with the stock Tailwind 4.3 root set and diffe
 - Precomputed maps are generated in CI for each supported Tailwind minor and shipped in the package. Each map is keyed
   by a hash of the root list, the value families and the plugin list. When the hash of the loaded setup does not match,
   the map is computed at runtime.
+- The same cache holds the colour palette, the set of value-directed families (ADR-2) and, once the composer is on by
+  default, its units and per-family analyses.
 - This is required in the first end-to-end milestone (M3), not an optimization for later.
 - A persistent on-disk cache is not part of 2.0.
 - The shipped maps are derived from MIT-licensed Tailwind data; the package carries the notice.
@@ -32,3 +34,5 @@ not on theme values. Two projects with the stock Tailwind 4.3 root set and diffe
 - The probe is 57–62% of the Tailwind 4 time to first rule: probe 217–234 ms of 359–380 ms (bundled build).
 - The probe compiles about 2,100 utilities in Tailwind 4 and 1,100 in Tailwind 3.
 - *Estimate:* 140–160 ms to the first rule on Tailwind 4 with the probe skipped.
+- The composer's Tailwind 4 setup is 13–16 ms once plus 20–27 ms per family, independent of the input (spike S2);
+  caching it makes the first composition cost about as much as a warm one (1–10 ms).

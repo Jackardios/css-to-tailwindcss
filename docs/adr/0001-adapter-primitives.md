@@ -25,6 +25,7 @@ interface TailwindAdapter {
   compile(candidates, opts?): (Compiled | null)[]   // blocks with the class selector replaced by `&`, at-rule chain
   order(candidates): (bigint | null)[]              // cascade order, comparable only within one call
   env: VarEnv                                       // theme variables and @property initial values (TW4), universal defaults (TW3)
+  themeTokens(): ThemeToken[]                       // name, value, colour; for value-directed lookup (ADR-2)
   baseline(): Declaration[]                         // preflight declarations, see ADR-10
   variants(): VariantInfo[]
   format(parts: { variants, utility, important }): string   // prefix, separator, `!` position
