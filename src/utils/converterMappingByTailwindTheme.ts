@@ -7,14 +7,55 @@ import type {
 import type { ConverterMapping } from '../types/ConverterMapping';
 
 import { colord } from 'colord';
+import valueParser from 'postcss-value-parser';
 import { buildMediaQueryByScreen } from './buildMediaQueryByScreen';
 import { flattenObject } from './flattenObject';
 import { remValueToPx } from './remValueToPx';
 import { normalizeNumbersInString } from './normalizeNumbersInString';
 import { removeUnnecessarySpaces } from './removeUnnecessarySpaces';
+import { normalizeTimeValue } from '../core/values';
 
+function normalizeUnquotedValue(value: string) {
+  return removeUnnecessarySpaces(normalizeNumbersInString(value)).replace(
+    /[ \t\n\r\f]+/g,
+    ' '
+  );
+}
+
+/**
+ * Normalizes numbers and whitespace outside strings and `url()`. Strings are kept as is, whitespace in URLs
+ * is percent-encoded, as browsers do: Tailwind keeps URLs of arbitrary values verbatim, so `_` can't stand
+ * for a space there.
+ */
 export function normalizeValue(value: string) {
-  return removeUnnecessarySpaces(normalizeNumbersInString(value));
+  if (!/["']|url\(/i.test(value)) {
+    return normalizeUnquotedValue(value);
+  }
+
+  let result = '';
+  let end = 0;
+  valueParser(value).walk(node => {
+    const isUrl =
+      node.type === 'function' && node.value.toLowerCase() === 'url';
+
+    if (node.type !== 'string' && !isUrl) {
+      return;
+    }
+
+    const url = isUrl ? node.nodes[0] : null;
+    result +=
+      normalizeUnquotedValue(value.slice(end, node.sourceIndex)) +
+      (url
+        ? `${node.value}(${value
+            .slice(url.sourceIndex, url.sourceEndIndex)
+            .replace(/\s/g, encodeURIComponent)})`
+        : value.slice(node.sourceIndex, node.sourceEndIndex));
+    end = node.sourceEndIndex;
+
+    return false;
+  });
+
+  return result + normalizeUnquotedValue(value.slice(end));
 }
 
 export function normalizeColorValue(colorValue: string) {
@@ -98,6 +139,7 @@ function isSizeKey(key: string) {
     'spacing',
     'strokeWidth',
     'textDecorationThickness',
+    'textIndent',
     'textUnderlineOffset',
     'translate',
     'width',
@@ -146,7 +188,11 @@ function convertScreens(screens: ScreensConfig) {
 }
 
 function convertColors(colors: RecursiveKeyValuePair) {
-  const flatColors = flattenObject(colors);
+  // as in Tailwind, a nested `DEFAULT` color is named after its group (`primary: { DEFAULT }` is `primary`)
+  const flatColors: Record<string, any> = {};
+  Object.entries(flattenObject(colors)).forEach(([key, value]) => {
+    flatColors[key.replace(/-DEFAULT\b/g, '')] = value;
+  });
 
   return mapThemeTokens(flatColors, (colorValue: string) => {
     colorValue = colorValue?.toString();
@@ -163,6 +209,18 @@ function convertSizes(sizes: KeyValuePair, remInPx: number | null | undefined) {
   });
 }
 
+function isTimeKey(key: string) {
+  return ['transitionDuration', 'transitionDelay'].includes(key);
+}
+
+function convertTimes(times: KeyValuePair) {
+  return mapThemeTokens(times, (timeValue: string) => {
+    timeValue = timeValue?.toString();
+
+    return timeValue ? normalizeTimeValue(timeValue) : null;
+  });
+}
+
 function convertOtherThemeTokens(tokens: KeyValuePair | null | undefined) {
   return tokens
     ? mapThemeTokens(tokens, (tokenValue: string) => {
@@ -172,6 +230,15 @@ function convertOtherThemeTokens(tokens: KeyValuePair | null | undefined) {
       })
     : tokens;
 }
+
+// Tailwind generates no utility for `DEFAULT` of these keys (e.g. `border` sets the default width, not the color)
+const THEME_KEYS_WITHOUT_DEFAULT_UTILITY = [
+  'borderColor',
+  'divideColor',
+  'ringColor',
+  'transitionDuration',
+  'transitionTimingFunction',
+];
 
 export function converterMappingByTailwindTheme(
   resolvedTailwindTheme: Config['theme'],
@@ -188,7 +255,12 @@ export function converterMappingByTailwindTheme(
       return;
     }
 
-    const themeItem = (resolvedTailwindTheme as any)[key];
+    let themeItem = (resolvedTailwindTheme as any)[key];
+
+    if (THEME_KEYS_WITHOUT_DEFAULT_UTILITY.includes(key) && themeItem) {
+      themeItem = { ...themeItem };
+      delete themeItem.DEFAULT;
+    }
 
     if (key === 'fontSize') {
       converterMapping[key] = convertFontSizes(themeItem, remInPx);
@@ -196,6 +268,8 @@ export function converterMappingByTailwindTheme(
       converterMapping[key] = convertScreens(themeItem);
     } else if (isColorKey(key)) {
       (converterMapping as any)[key] = convertColors(themeItem);
+    } else if (isTimeKey(key)) {
+      (converterMapping as any)[key] = convertTimes(themeItem);
     } else if (isSizeKey(key)) {
       (converterMapping as any)[key] = convertSizes(themeItem, remInPx);
     } else {

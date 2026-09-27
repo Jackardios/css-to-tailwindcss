@@ -114,6 +114,25 @@ export const UTILITIES_MAPPING = {
     'avoid-page': 'break-inside-avoid-page',
     'avoid-column': 'break-inside-avoid-column',
   },
+  // the legacy `page-break-*` properties are aliases of `break-*` with fewer values
+  'page-break-after': {
+    auto: 'break-after-auto',
+    avoid: 'break-after-avoid',
+    always: 'break-after-page',
+    left: 'break-after-left',
+    right: 'break-after-right',
+  },
+  'page-break-before': {
+    auto: 'break-before-auto',
+    avoid: 'break-before-avoid',
+    always: 'break-before-page',
+    left: 'break-before-left',
+    right: 'break-before-right',
+  },
+  'page-break-inside': {
+    auto: 'break-inside-auto',
+    avoid: 'break-inside-avoid',
+  },
   clear: {
     left: 'clear-left',
     right: 'clear-right',
@@ -162,6 +181,14 @@ export const UTILITIES_MAPPING = {
   'font-smoothing': {
     antialiased: 'antialiased',
     grayscale: 'antialiased',
+    auto: 'subpixel-antialiased',
+  },
+  '-moz-osx-font-smoothing': {
+    grayscale: 'antialiased',
+    auto: 'subpixel-antialiased',
+  },
+  '-webkit-font-smoothing': {
+    antialiased: 'antialiased',
     auto: 'subpixel-antialiased',
   },
   'font-style': {
@@ -262,7 +289,7 @@ export const UTILITIES_MAPPING = {
     scroll: 'overflow-scroll',
   },
   'overflow-wrap': {
-    // normal: 'break-normal',
+    // `break-normal` also resets `word-break`
     'break-word': 'break-words',
   },
   'overflow-x': {

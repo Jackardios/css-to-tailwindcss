@@ -11,7 +11,6 @@
       "runtimeExecutable": "node",
       "args": ["${relativeFile}"],
       "runtimeArgs": ["--nolazy", "-r", "ts-node/register/transpile-only"],
-      "envFile": "${workspaceFolder}/.env",
       "cwd": "${workspaceRoot}",
       "internalConsoleOptions": "openOnSessionStart",
       "skipFiles": ["<node_internals>/**", "node_modules/**"]
@@ -25,7 +24,6 @@
         "${workspaceRoot}/node_modules/.bin/jest",
         "--runInBand"
       ],
-      "envFile": "${workspaceFolder}/.env",
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen",
       "port": 9229,

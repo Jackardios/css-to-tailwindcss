@@ -1,4 +1,4 @@
-import { type AtRule, type Node, Rule, ChildNode } from 'postcss';
+import { type AtRule, type Node, Rule } from 'postcss';
 import { isAtRuleNode } from './utils/isAtRuleNode';
 import { isChildNode } from './utils/isChildNode';
 
@@ -29,6 +29,9 @@ export function isUnresolvedTailwindNode(
   return !isResolvedTailwindNode(node);
 }
 
+/**
+ * @deprecated Not used by the converter since 1.1, kept for backward compatibility.
+ */
 export class TailwindNodesManager {
   protected nodesMap: Map<string, ResolvedTailwindNode>;
 
@@ -103,19 +106,21 @@ export class TailwindNodesManager {
     return Array.from(this.nodesMap.values());
   }
 
-  protected upToRootChild(node: Node) {
-    let childNode: ChildNode | null = null;
+  /**
+   * Returns the ancestor of the node (or the node itself) that is a direct child of the root.
+   */
+  protected upToRootChild(node: Node): AtRule | Rule | null {
+    let current: Node = node;
 
     while (
-      node.parent &&
-      node.parent.type !== 'root' &&
-      isChildNode(node.parent)
+      current.parent &&
+      current.parent.type !== 'root' &&
+      isChildNode(current.parent)
     ) {
-      childNode = node = node.parent;
-      continue;
+      current = current.parent;
     }
 
-    return childNode;
+    return current.parent ? (current as AtRule | Rule) : null;
   }
 
   static convertRuleToKey(
