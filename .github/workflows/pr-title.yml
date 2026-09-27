@@ -23,7 +23,8 @@ jobs:
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
           types='feat|fix|perf|build|ci|docs|refactor|test|chore|style|revert'
-          if ! printf '%s' "$TITLE" | grep -Eq "^($types)(\([a-z0-9._/-]+\))?!?: [^ ]"; then
+          title_re="^($types)(\([a-z0-9._/-]+\))?(!?): [^ ]"
+          if [[ ! "$TITLE" =~ $title_re ]]; then
             echo "::error::The title must follow Conventional Commits, e.g. 'fix: keep important declarations' (types: ${types//|/, })"
             exit 1
           fi
@@ -31,10 +32,11 @@ jobs:
           # A major release may only reach main or a maintenance branch from `next`
           # (the v2 cutover) or with the `release:major` label.
           # The parser matches `BREAKING CHANGE:` at the start of any body line, in any case.
+          # No pipes here: under pipefail, `printf | grep -q` can miss a match in a long body.
           breaking=false
-          if printf '%s' "$TITLE" | grep -Eq "^[a-z]+(\([^)]*\))?!:"; then breaking=true; fi
-          if printf '%s\n' "$BODY" | grep -Eiq '^[[:space:]]*(\*[[:space:]]+)?breaking[ -]change:'; then breaking=true; fi
-          if [[ "$breaking" == true && ( "$BASE" == main || "$BASE" =~ ^[0-9]+\.x$ ) ]] \
+          if [[ "${BASH_REMATCH[3]}" == '!' ]]; then breaking=true; fi
+          if grep -Eiq '^[[:space:]]*(\*[[:space:]]+)?breaking[ -]change:' <<< "$BODY"; then breaking=true; fi
+          if [[ "$breaking" == true && ( "$BASE" == main || "$BASE" =~ ^[0-9]+(\.[0-9]+)?\.x$ ) ]] \
             && [[ "$HEAD" != next && ",$LABELS," != *",release:major,"* ]]; then
             echo "::error::This PR would release a new major version from $BASE. Remove '!' from the title and any line starting with 'BREAKING CHANGE:' from the description, or target 'next'."
             exit 1
