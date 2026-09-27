@@ -80,11 +80,17 @@ export function strictConvertDeclarationValue(
   value: string,
   valuesMap: Record<string, string>
 ) {
-  const key = value.trim();
-  // keywords are case-insensitive, but the names of custom properties aren't
-  const mapped =
-    getOwn(valuesMap, key) ||
-    (key.includes('--') ? undefined : getOwn(valuesMap, key.toLowerCase()));
+  const key = value.trim().replace(/[ \t\n\r\f]+/g, ' ');
+  let mapped = getOwn(valuesMap, key);
+
+  // keywords and function names are case-insensitive, but the names of custom properties aren't
+  if (!mapped && !key.includes('--')) {
+    const lowerCasedKey = key.toLowerCase();
+    const mappedKey = Object.keys(valuesMap).find(
+      mapKey => mapKey.toLowerCase() === lowerCasedKey
+    );
+    mapped = mappedKey && valuesMap[mappedKey];
+  }
 
   return mapped ? [mapped] : [];
 }
@@ -643,7 +649,8 @@ const BACKDROP_FILTER_FUNCTIONS_ORDER = [
 
 /**
  * Converts a list of filter functions. Tailwind composes filters in a fixed order,
- * so a value is converted only if its functions follow that order without repetitions.
+ * so a value is converted only if its functions follow that order without repetitions
+ * (except for the layers of a theme drop shadow).
  */
 function convertFilterFunctions(
   value: string,
@@ -663,7 +670,8 @@ function convertFilterFunctions(
   let classes: string[] = [];
   let lastIndex = -1;
 
-  for (const { name, args } of functions) {
+  for (let i = 0; i < functions.length; i++) {
+    const { name, args } = functions[i];
     const lowerCasedName = name.toLowerCase();
     const index = functionsOrder.indexOf(lowerCasedName);
     const valuesMapping = getValuesMapping(lowerCasedName);
@@ -674,21 +682,42 @@ function convertFilterFunctions(
 
     lastIndex = index;
     const [arg] = args;
-    const isDropShadow = lowerCasedName === 'drop-shadow';
 
-    if (!arg || (!isDropShadow && !isSingleToken(arg))) {
+    if (!arg) {
       return [];
     }
 
-    const converted = isDropShadow
-      ? convertDeclarationValue(arg, valuesMapping, classPrefix(lowerCasedName))
-      : convertSizeDeclarationValue(
-          arg,
-          valuesMapping,
-          classPrefix(lowerCasedName),
-          remInPx,
-          lowerCasedName === 'hue-rotate'
-        );
+    const prefix = classPrefix(lowerCasedName);
+    let converted: string[] = [];
+
+    if (lowerCasedName === 'drop-shadow') {
+      // Tailwind's drop shadows with several layers are lists of `drop-shadow()` functions,
+      // their theme values are the layers joined by commas
+      const layers = [arg];
+      while (
+        functions[i + 1]?.name.toLowerCase() === 'drop-shadow' &&
+        functions[i + 1].args.length === 1
+      ) {
+        layers.push(functions[++i].args[0]);
+      }
+      const layersValue = layers.join(',');
+
+      // several layers can't be written as an arbitrary value
+      if (
+        layers.length === 1 ||
+        getOwn(valuesMapping, normalizeValue(layersValue))
+      ) {
+        converted = convertDeclarationValue(layersValue, valuesMapping, prefix);
+      }
+    } else if (isSingleToken(arg)) {
+      converted = convertSizeDeclarationValue(
+        arg,
+        valuesMapping,
+        prefix,
+        remInPx,
+        lowerCasedName === 'hue-rotate'
+      );
+    }
 
     if (!converted.length) {
       return [];

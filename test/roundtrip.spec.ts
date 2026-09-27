@@ -189,6 +189,22 @@ describe('round trip', () => {
 
     expect(await classDeclarations(classes)).toEqual(expected);
   });
+
+  it.each([
+    'drop-shadow(0 1px 2px rgb(0 0 0 / 0.1)) drop-shadow(0 1px 1px rgb(0 0 0 / 0.06))',
+    'drop-shadow(0 4px 3px rgb(0 0 0 / 0.07))  drop-shadow(0 2px 2px rgb(0 0 0 / 0.06))',
+  ])('filter: %s keeps the drop shadow layers', async value => {
+    const classes = await convertDeclaration('filter', value);
+    const root = await compileOutput(`.x { @apply ${classes.join(' ')}; }`);
+    let dropShadow;
+
+    root.walkDecls('--tw-drop-shadow', declaration => {
+      dropShadow = declaration.value;
+    });
+
+    expect(classes).toHaveLength(1);
+    expect(dropShadow).toBe(value.replace(/\s+/g, ' '));
+  });
 });
 
 /**

@@ -615,6 +615,25 @@ describe('regressions', () => {
       ],
       ['.a { filter: opacity(0.5) }', '.a { filter: opacity(0.5) }'],
       ['.a { transform: none }', '.a { @apply transform-none }'],
+      // function names are case-insensitive
+      [
+        '.a { transform: translatez(0) } .b { transform: TRANSLATE3D(0, 0, 0) }',
+        '.a { @apply transform-gpu } .b { @apply transform-gpu }',
+      ],
+      // theme drop shadows with several layers
+      [
+        '.a { filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.1)) drop-shadow(0 1px 1px rgb(0 0 0 / 0.06)) }',
+        '.a { @apply drop-shadow }',
+      ],
+      [
+        '.a { filter: blur(4px) drop-shadow(0 4px 3px rgb(0 0 0 / 0.07)) drop-shadow(0 2px 2px rgb(0 0 0 / 0.06)) }',
+        '.a { @apply blur-sm drop-shadow-md }',
+      ],
+      // other layers can't be written as one arbitrary value
+      [
+        '.a { filter: drop-shadow(0 1px 1px red) drop-shadow(0 2px 2px blue) }',
+        '.a { filter: drop-shadow(0 1px 1px red) drop-shadow(0 2px 2px blue) }',
+      ],
       // Tailwind applies one duration and timing function to all transitioned properties
       [
         '.a { transition: opacity 0.3s ease, transform 0.3s ease } .b { transition: opacity 0.3s ease-in-out }',
@@ -700,6 +719,16 @@ describe('regressions', () => {
       ],
       ['.a { inset: 1px 2px }', '.a { @apply inset-x-0.5 inset-y-px }'],
       ['.a { font-size: 4Q }', '.a { @apply text-[4Q] }'],
+      // whitespace between the parts of keyword values
+      [
+        '.a { outline: 2px  solid transparent } .b { grid-auto-flow: row\n  dense }',
+        '.a { @apply outline-none } .b { @apply grid-flow-row-dense }',
+      ],
+      // a no-break space isn't whitespace in CSS
+      [
+        '.a { grid-auto-flow: row\u00a0dense }',
+        '.a { grid-auto-flow: row\u00a0dense }',
+      ],
       ['.a { opacity: 50% }', '.a { @apply opacity-50 }'],
       [
         '.a { flex: auto } .b { flex: none } .c { flex: initial } .d { flex: 1 } .e { flex: 0 0 auto }',
