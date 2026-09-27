@@ -251,6 +251,11 @@ becomes `.foo { @apply hover:text-[red] } .foo { @apply block }`.
   for 150ms). `text-decoration: underline` becomes `underline`, which doesn't reset the style and the color of the line.
 - Important declarations are converted like with `strict`, since the side effects of important utilities would
   override the other declarations of the rule (e.g. `font-size: 14px !important` becomes `!text-[length:14px]`).
+  Tailwind keeps the last of duplicate declarations regardless of `!important`, so an important declaration
+  followed by a remaining declaration of the same property is left as CSS.
+- `animate-*` utilities add Tailwind's keyframes for the animations of the theme (`spin`, `ping`, `pulse`, `bounce`),
+  so `animation` using these names is left as CSS if the file defines keyframes with the same name or the Tailwind
+  config has a prefix.
 - `transform`, `filter` and `backdrop-filter` functions are converted to Tailwind utilities, which compose with the
   functions set by other rules (e.g. `rotate-45 hover:translate-x-1` keeps the rotation on hover). The same goes for
   `touch-action`, `font-variant-numeric` and `scroll-snap-type` keywords (e.g. `touch-pan-x hover:touch-pan-y`

@@ -134,6 +134,10 @@ describe('round trip', () => {
     ['transition-duration', '0.3s', { 'transition-duration': '300ms' }],
     ['font-size', 'inherit', { 'font-size': 'inherit' }],
     ['border-width', 'inherit', { 'border-width': 'inherit' }],
+    ['border-width', 'thick', { 'border-width': 'thick' }],
+    ['outline-width', 'thin', { 'outline-width': '1px' }],
+    ['outline-width', 'MEDIUM', { 'outline-width': '3px' }],
+    ['outline-width', 'thick', { 'outline-width': '5px' }],
     [
       'box-shadow',
       'var(--shadow)',
@@ -204,6 +208,57 @@ describe('round trip', () => {
 
     expect(classes).toHaveLength(1);
     expect(dropShadow).toBe(value.replace(/\s+/g, ' '));
+  });
+});
+
+describe('the compiled output', () => {
+  // Tailwind merges adjacent rules with the same selector and keeps the last of duplicate declarations
+  it.each([
+    [
+      '.a { margin-top: 1rem !important } .a { margin-top: 2px }',
+      { 'margin-top': '1rem' },
+    ],
+    [
+      '.a { margin: 0 !important } .a { margin-top: 4px }',
+      { 'margin-top': '0px' },
+    ],
+    [
+      '.a { position: relative; inset: auto !important; top: auto; top: 4px }',
+      { top: 'auto', position: 'relative' },
+    ],
+  ])('keeps the winning declarations of %s', async (css, expected) => {
+    const result = await converter.convertCSS(css);
+    const compiled = await compileOutput(result.convertedRoot.toString());
+    const winners: Record<string, { value: string; important: boolean }> = {};
+
+    compiled.walkDecls(declaration => {
+      longhandsOf(declaration.prop).forEach(property => {
+        if (!winners[property]?.important || declaration.important) {
+          winners[property] = {
+            value: declaration.value,
+            important: !!declaration.important,
+          };
+        }
+      });
+    });
+
+    Object.entries(expected).forEach(([property, value]) => {
+      expect(winners[property]?.value).toBe(value);
+    });
+  });
+
+  it('styles the file selector button of a hovered input', async () => {
+    const result = await converter.convertCSS(
+      '.a:hover::file-selector-button { color: red }'
+    );
+    const compiled = await compileOutput(result.convertedRoot.toString());
+    const selectors: string[] = [];
+
+    compiled.walkRules(rule => {
+      selectors.push(rule.selector);
+    });
+
+    expect(selectors).toEqual(['.a:hover::file-selector-button']);
   });
 });
 
