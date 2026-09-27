@@ -4,9 +4,17 @@ on:
   push:
     branches:
       - main
+      # maintenance branches (1.x, 1.2.x, ...); `next` is added once v2 prereleases are ready
+      - '[0-9]+.x'
+      - '[0-9]+.[0-9]+.x'
 
 permissions:
   contents: read
+
+# two quick merges must not run semantic-release in parallel on the same branch
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -24,6 +32,18 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # without `prerelease: true`, semantic-release treats `next` as a release branch
+      # and would publish 2.0.0 (not 2.0.0-next.1) under the `next` dist-tag
+      - name: Check release branches
+        run: |
+          node -e "
+            const branches = require('./package.json').release.branches;
+            const next = branches.find((b) => b === 'next' || b.name === 'next');
+            if (next && next.prerelease !== true) {
+              console.error('release.branches: next must be { name: \"next\", prerelease: true }');
+              process.exit(1);
+            }
+          "
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

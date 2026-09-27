@@ -1,0 +1,67 @@
+name: PR Title
+
+# PRs are squash-merged with the PR title as the commit subject, so the title's
+# conventional type decides the release (feat → minor, fix/perf → patch).
+#
+# pull_request_target runs this file from the base branch, so a PR cannot change its own
+# required check. It never runs code from the PR: the PR head is only fetched as git data.
+on:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] -- runs no PR code, only reads git data
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  title:
+    name: Conventional title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          types='feat|fix|perf|build|ci|docs|refactor|test|chore|style|revert'
+          title_re="^($types)(\([a-z0-9._/-]+\))?!?: [^ ]"
+          if [[ ! "$TITLE" =~ $title_re ]]; then
+            echo "::error::The title must follow Conventional Commits, e.g. 'fix: keep important declarations' (types: ${types//|/, })"
+            exit 1
+          fi
+
+          # The rest guards the branches that publish stable versions to `latest` and `release-*`.
+          if [[ "$BASE" != main && ! "$BASE" =~ ^[0-9]+(\.[0-9]+)?\.x$ ]]; then exit 0; fi
+          if [[ ",$LABELS," == *",release:major,"* ]]; then
+            echo "The release:major label allows a major release and commits from next."
+            exit 0
+          fi
+
+          # The same patterns as the conventionalcommits preset (breakingHeaderPattern) and
+          # conventional-commits-parser (notes), which make semantic-release publish a major.
+          # No pipes: under pipefail, `printf | grep -q` can miss a match in a long body.
+          # The web UI saves the body with CRLF, and a trailing CR must not count as the space.
+          header_re='^[[:alnum:]_]*(\(.*\))?!: '
+          if [[ "$TITLE" =~ $header_re ]] || grep -Eiq '^[[:space:]|*]*breaking[ -]change[[:space:]:]' <<< "${BODY//$'\r'/}"; then
+            echo "::error::This PR would release a new major version from $BASE. Remove '!' from the title and any line starting with 'BREAKING CHANGE' from the description, target 'next', or add the release:major label."
+            exit 1
+          fi
+
+          # Unreleased v2 commits from `next` would be published as a 1.x minor or patch,
+          # whatever the title says.
+          if git rev-parse -q --verify refs/remotes/origin/next > /dev/null; then
+            git fetch -q --no-tags origin "+refs/pull/$NUMBER/head:refs/pr-head"
+            for merge_base in $(git merge-base --all refs/pr-head refs/remotes/origin/next); do
+              if ! git merge-base --is-ancestor "$merge_base" "refs/remotes/origin/$BASE"; then
+                echo "::error::This PR brings commits from next into $BASE. Target 'next', or add the release:major label for the v2 cutover."
+                exit 1
+              fi
+            done
+          fi
