@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "CSS to TailwindCSS converter",
   "main": "./lib/index.js",
+  "bin": {
+    "css-to-tailwindcss": "./lib/cli.js"
+  },
   "files": [
     "lib/**/*"
   ],
@@ -129,6 +132,8 @@
   "dependencies": {
     "colord": "^2.9.4",
     "css-what": "^6.1.0",
+    "fast-glob": "^3.3.3",
+    "mri": "^1.2.0",
     "postcss": "^8.4.31",
     "postcss-safe-parser": "^6.0.0",
     "postcss-value-parser": "^4.2.0",
