@@ -31,12 +31,14 @@ npm install css-to-tailwindcss
 
 ## CLI
 
-The css-to-tailwindcss command accepts CSS glob patterns and updates each
-matched file in place:
+The css-to-tailwindcss command accepts CSS glob patterns or directories and
+updates each matched file in place. A directory such as `./src` expands to
+`./src/**/*.css`. Files matched by `.gitignore` are skipped by default; use
+`--no-gitignore` to include them:
 
-~~~bash
-css-to-tailwindcss "packages/*/src/**/*.css"
-~~~
+```bash
+css-to-tailwindcss ./src
+```
 
 For each input file, the CLI searches its directory and parent directories for
 the nearest tailwind.config.js or tailwind.config.cjs. Tailwind presets in
@@ -47,7 +49,7 @@ working directory.
 The API options are available as flags. --postcss-plugin can be repeated to
 load plugins by module name or path, resolved from the input's package:
 
-~~~bash
+```bash
 css-to-tailwindcss \
   --config ./tailwind.config.js \
   --rem-in-px 16 \
@@ -55,8 +57,8 @@ css-to-tailwindcss \
   --arbitrary-variants \
   --strict \
   --postcss-plugin postcss-nested \
-  "src/**/*.css"
-~~~
+  ./src
+```
 
 Run css-to-tailwindcss --help to see all flags.
 

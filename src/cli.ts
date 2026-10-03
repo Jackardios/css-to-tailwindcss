@@ -1,6 +1,16 @@
 #!/usr/bin/env node
+import { execFileSync } from 'child_process';
 import { existsSync, promises as fileSystem } from 'fs';
 import fg from 'fast-glob';
+import {
+  globifyGitIgnoreFile,
+  posixifyPath,
+  posixifyPathNormalized,
+} from 'globify-gitignore';
+import {
+  getPathType,
+  PATH_TYPE,
+} from 'globify-gitignore/dist/cjs/path-utils.cjs';
 import mri from 'mri';
 import type { AcceptedPlugin } from 'postcss';
 import { dirname, isAbsolute, join, parse, relative, resolve } from 'path';
@@ -9,24 +19,24 @@ import { TailwindConverter } from './TailwindConverter';
 
 const CONFIG_FILE_NAMES = ['tailwind.config.js', 'tailwind.config.cjs'];
 
-const HELP_TEXT = [
-  'Usage: css-to-tailwindcss [options] <glob...>',
-  '',
-  'Options:',
-  '  -c, --config <path>                  Use this Tailwind config for every input',
-  '      --rem-in-px <number>              Set the pixel size of 1rem',
-  '      --arbitrary-properties-is-enabled',
-  '                                        Convert unsupported declarations',
-  '                                        to arbitrary properties',
-  '      --arbitrary-variants             Convert unmatched media and supports rules to variants',
-  '      --strict                         Prefer exact values or leave declarations as CSS',
-  '      --postcss-plugin <module>        Load a PostCSS plugin (repeatable)',
-  '  -h, --help                           Show this help',
-  '',
-  'Without --config, each input uses the nearest tailwind.config.js or',
-  'tailwind.config.cjs found while walking up from its directory.',
-  '',
-].join('\n');
+const HELP_TEXT = `Usage: css-to-tailwindcss [options] <glob...>
+
+Options:
+  -c, --config <path>                  Use this Tailwind config for every input
+      --rem-in-px <number>              Set the pixel size of 1rem
+      --arbitrary-properties-is-enabled
+                                        Convert unsupported declarations
+                                        to arbitrary properties
+      --arbitrary-variants             Convert unmatched media and supports rules to variants
+      --strict                         Prefer exact values or leave declarations as CSS
+      --postcss-plugin <module>        Load a PostCSS plugin (repeatable)
+      --no-gitignore                   Include files matched by .gitignore
+  -h, --help                           Show this help
+
+Directory inputs are searched recursively for CSS files.
+Without --config, each input uses the nearest tailwind.config.js or
+tailwind.config.cjs found while walking up from its directory.
+`;
 
 type ParsedArguments = {
   _: string[];
@@ -37,6 +47,7 @@ type ParsedArguments = {
   'arbitrary-variants': boolean;
   strict: boolean;
   'postcss-plugin'?: string | string[];
+  gitignore: boolean;
 };
 
 function parseOptions(argv: string[]) {
@@ -50,6 +61,7 @@ function parseOptions(argv: string[]) {
       'arbitrary-properties-is-enabled',
       'arbitrary-variants',
       'strict',
+      'gitignore',
     ],
     string: ['config', 'postcss-plugin'],
     default: {
@@ -57,11 +69,93 @@ function parseOptions(argv: string[]) {
       'arbitrary-properties-is-enabled': false,
       'arbitrary-variants': false,
       strict: false,
+      gitignore: true,
     },
     unknown(flag) {
       throw new Error(`Unknown option: ${flag}`);
     },
   });
+}
+
+function findRepositoryRoot(startDirectory: string): string | undefined {
+  try {
+    const repositoryRoot = execFileSync(
+      'git',
+      ['rev-parse', '--show-toplevel'],
+      { cwd: startDirectory, encoding: 'utf8' }
+    ).trim();
+
+    return repositoryRoot ? resolve(repositoryRoot) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function listGitIgnoreFiles(repositoryRoot: string): string[] {
+  try {
+    const trackedAndVisibleFiles = execFileSync(
+      'git',
+      ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+      { cwd: repositoryRoot, encoding: 'utf8' }
+    );
+
+    return trackedAndVisibleFiles
+      .split('\0')
+      .filter(file => file === '.gitignore' || file.endsWith('/.gitignore'))
+      .filter(file => file && existsSync(resolve(repositoryRoot, file)))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+async function collectIgnoredGlobs(repositoryRoot: string): Promise<string[]> {
+  const gitIgnoreFiles = listGitIgnoreFiles(repositoryRoot);
+
+  const entriesByFile = await Promise.all(
+    gitIgnoreFiles.map(file =>
+      globifyGitIgnoreFile(resolve(repositoryRoot, dirname(file)), true)
+    )
+  );
+  const repositoryRootGlob = `${posixifyPathNormalized(repositoryRoot)}/`;
+
+  const entries: Array<{ glob: string; included: boolean }> = [];
+  for (const fileEntries of entriesByFile) {
+    entries.push(...fileEntries);
+  }
+
+  const globs = entries
+    .filter(entry => !entry.included)
+    .map(entry => {
+      const glob = posixifyPath(entry.glob);
+
+      if (!glob.startsWith(repositoryRootGlob)) {
+        throw new Error(
+          `Git-ignore glob escaped the repository root: ${entry.glob}`
+        );
+      }
+
+      return glob.slice(repositoryRootGlob.length);
+    });
+
+  return [...new Set(globs)].sort();
+}
+
+async function expandDirectoryInputs(
+  patterns: string[],
+  workingDirectory: string
+): Promise<string[]> {
+  return Promise.all(
+    patterns.map(async pattern => {
+      const inputPath = resolve(process.cwd(), pattern);
+      const globPattern =
+        (await getPathType(inputPath)) === PATH_TYPE.DIRECTORY
+          ? join(inputPath, '**/*.css')
+          : inputPath;
+
+      return posixifyPath(relative(workingDirectory, globPattern));
+    })
+  );
 }
 
 function findInParent<T>(
@@ -225,8 +319,15 @@ async function main(): Promise<void> {
     );
   }
 
-  const inputPaths = await fg(options._, {
+  const workingDirectory = findRepositoryRoot(process.cwd()) ?? process.cwd();
+  const patterns = await expandDirectoryInputs(options._, workingDirectory);
+  const ignoredGlobs = options.gitignore
+    ? await collectIgnoredGlobs(workingDirectory)
+    : [];
+  const inputPaths = await fg(patterns, {
     absolute: true,
+    cwd: workingDirectory,
+    ignore: ignoredGlobs,
     onlyFiles: true,
     unique: true,
   });
@@ -240,12 +341,9 @@ async function main(): Promise<void> {
       try {
         await convertInputFile(inputPath, options);
       } catch (error: unknown) {
-        process.stderr.write(
-          'Failed to convert ' +
-            relative(process.cwd(), inputPath) +
-            ': ' +
-            errorMessage(error) +
-            '\n'
+        const relativeInputPath = relative(process.cwd(), inputPath);
+        console.error(
+          `Failed to convert ${relativeInputPath}: ${errorMessage(error)}\n`
         );
         process.exitCode = 1;
       }
@@ -254,6 +352,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  process.stderr.write(`Error: ${errorMessage(error)}\n`);
+  console.error(`Error: ${errorMessage(error)}\n`);
   process.exitCode = 1;
 });

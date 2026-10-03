@@ -133,6 +133,7 @@
     "colord": "^2.9.4",
     "css-what": "^6.1.0",
     "fast-glob": "^3.3.3",
+    "globify-gitignore": "^1.0.3",
     "mri": "^1.2.0",
     "postcss": "^8.4.31",
     "postcss-safe-parser": "^6.0.0",
